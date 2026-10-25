@@ -13,6 +13,7 @@ export class Store {
   db: DatabaseSync;
   constructor(directory: string) {
     mkdirSync(directory, { recursive: true, mode: 0o700 });
+    chmodSync(directory, 0o700);
     const filename = join(directory, 'thermostat.sqlite');
     this.db = new DatabaseSync(filename);
     chmodSync(filename, 0o600);
