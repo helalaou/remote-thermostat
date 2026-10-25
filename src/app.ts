@@ -84,7 +84,7 @@ export function createApp({config,store,connection=new GoogleConnection(config,s
    if(session?.role!=='owner')return c.text('Owner sign-in is required. Return to the app and connect Google again.',403);
    const state=c.req.query('state');const code=c.req.query('code');
    if(!state||!code||state.length>200||code.length>4096)return c.text('Google connection was not completed. Return to the app and start again.',400);
-   try{await connection.complete(code,state,session.hash);thermostat.reset();store.audit(session.keyId,'google-connect','success');return c.redirect('/?connected=1',303);}
+   try{await connection.complete(code,state,session.hash,()=>store.session(getCookie(c,cookieName))?.role==='owner');thermostat.reset();store.audit(session.keyId,'google-connect','success');return c.redirect('/?connected=1',303);}
    catch{return c.text('Google connection could not be completed. Check your setup, selected thermostat, and permissions, then start again from the app. No credentials are displayed here.',400);}
  });
  app.onError((error,c)=>{

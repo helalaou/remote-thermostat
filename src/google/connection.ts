@@ -32,7 +32,7 @@ export class GoogleConnection {
     url.search=new URLSearchParams({client_id:this.config.googleClientId!,redirect_uri:this.config.origin+'/oauth/google/callback',response_type:'code',scope:SCOPE,access_type:'offline',prompt:'consent',state,code_challenge:createHash('sha256').update(verifier).digest('base64url'),code_challenge_method:'S256'}).toString();
     return url.href;
   }
-  async complete(code: string, state: string, sessionHash: string): Promise<void> {
+  async complete(code: string, state: string, sessionHash: string, authorized: () => boolean = () => true): Promise<void> {
     if (!googleConfigured(this.config)) throw new Error('Google is not configured.');
     const encrypted=this.store.consumeOAuthState(state,sessionHash);
     if (!encrypted) throw new Error('This Google connection request expired or was already used. Start again from the owner panel.');
@@ -48,6 +48,7 @@ export class GoogleConnection {
     const choices=raw.devices.filter((item):item is {name:string;type:string} => item && typeof item==='object' && item.type==='sdm.devices.types.THERMOSTAT' && isDeviceResource(item.name) && item.name.startsWith(prefix));
     const selected=this.config.googleDeviceId ? choices.find(item=>item.name===prefix+this.config.googleDeviceId) : choices.length===1 ? choices[0] : undefined;
     if (!selected) throw new Error('Authorize exactly one thermostat, or configure GOOGLE_DEVICE_ID to select one of the authorized thermostats.');
+    if (!authorized()) throw new Error('Owner access expired or was revoked during connection.');
     this.store.db.exec('BEGIN IMMEDIATE');
     try {
       this.store.set('google-refresh',encryptSecret(tokens.refresh_token,this.config.encryptionKey!,'google-refresh'));

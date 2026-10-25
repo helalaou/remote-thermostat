@@ -55,3 +55,13 @@ test('fan ON readback does not falsely confirm a different timer duration',async
  const {service}=setup(t,{getDevice:async()=>state,execute:async()=>({})});const result=await service.command('guest',randomUUID(),{type:'fan',timerMode:'ON',durationSeconds:3600},()=>true);
  assert.equal(result.body.accepted,true);assert.equal(result.body.confirmed,false);
 });
+test('application attempts are bounded before request/audit persistence, while replay remains free',async(t)=>{
+ const {service,store}=setup(t,null);
+ for(let i=0;i<20;i++)await service.command('guest',randomUUID(),{type:'heat',heatCelsius:22},()=>true);
+ await assert.rejects(()=>service.command('guest',randomUUID(),{type:'heat',heatCelsius:22},()=>true),/Too many/);
+ const count=store.db.prepare('SELECT count(*) AS n FROM requests').get() as {n:number};assert.equal(count.n,20);
+});
+test('a reset during read never publishes the previous connection snapshot',async(t)=>{
+ let release:()=>void=()=>{};const {service}=setup(t,{getDevice:async()=>{await new Promise<void>(r=>{release=r;});return snapshot();},execute:async()=>{}});
+ const pending=service.status();service.reset();release();const result=await pending;assert.equal(result.stale,true);assert.equal(result.snapshot,undefined);
+});

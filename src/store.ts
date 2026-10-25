@@ -17,6 +17,8 @@ export class Store {
     const filename = join(directory, 'thermostat.sqlite');
     this.db = new DatabaseSync(filename);
     chmodSync(filename, 0o600);
+    const version = this.db.prepare('PRAGMA user_version').get() as { user_version: number };
+    if (version.user_version > 1) { this.db.close(); throw new Error('Database was created by a newer app version. Upgrade the app before opening it.'); }
     this.db.exec(`PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;
       CREATE TABLE IF NOT EXISTS access_keys (id TEXT PRIMARY KEY, token_hash TEXT NOT NULL UNIQUE, role TEXT NOT NULL CHECK(role IN ('owner','neighbor')), label TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER, revoked_at INTEGER);
       CREATE TABLE IF NOT EXISTS sessions (hash TEXT PRIMARY KEY, key_id TEXT NOT NULL REFERENCES access_keys(id), csrf TEXT NOT NULL, expires_at INTEGER NOT NULL);

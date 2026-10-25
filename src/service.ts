@@ -9,9 +9,9 @@ export interface ServiceOptions { store:Store; client:()=>DeviceClient|null; pol
 export class ThermostatService {
   store:Store; client:()=>DeviceClient|null; policy:Partial<ControlPolicy>; now:()=>number;
   snapshot?:ThermostatSnapshot; lastError?:{message:string;retryAfterSeconds?:number}; pendingRead?:Promise<ThermostatSnapshot>;
-  busy=false;
+  busy=false; generation=0;
   constructor(options:ServiceOptions){this.store=options.store;this.client=options.client;this.policy=options.policy;this.now=options.now||Date.now;}
-  reset(){this.snapshot=undefined;this.lastError=undefined;}
+  reset(){this.generation++;this.snapshot=undefined;this.lastError=undefined;}
   cooldown(){return Math.max(0,Math.ceil((Number(this.store.get('google-cooldown-until')||0)-this.now())/1000));}
   private catchQuota(error:unknown){
     if(error instanceof GoogleApiError && error.status===429){
@@ -24,9 +24,10 @@ export class ThermostatService {
     if(this.pendingRead)return this.pendingRead;
     const wait=this.cooldown();if(wait)throw new RateLimitError(wait);
     this.store.reserve('google-reads',[{max:10,windowMs:60_000}],this.now());
+    const generation=this.generation;
     this.pendingRead=(async()=>{
-      try{const snapshot=await client.getDevice();this.snapshot=snapshot;this.lastError=undefined;return snapshot;}
-      catch(error){this.catchQuota(error);this.lastError={message:error instanceof GoogleApiError?error.message:'The latest thermostat status could not be read.',retryAfterSeconds:error instanceof GoogleApiError?error.retryAfterSeconds||undefined:undefined};throw error;}
+      try{const snapshot=await client.getDevice();if(generation!==this.generation)throw new CommandValidationError('CONNECTION_CHANGED','The connection changed. Refresh the thermostat.',409);this.snapshot=snapshot;this.lastError=undefined;return snapshot;}
+      catch(error){this.catchQuota(error);if(generation===this.generation)this.lastError={message:error instanceof GoogleApiError?error.message:'The latest thermostat status could not be read.',retryAfterSeconds:error instanceof GoogleApiError?error.retryAfterSeconds||undefined:undefined};throw error;}
       finally{this.pendingRead=undefined;}
     })();
     return this.pendingRead;

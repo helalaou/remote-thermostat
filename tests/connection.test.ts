@@ -33,3 +33,10 @@ test('ambiguous thermostat discovery never persists a connection',async(t)=>{
  const connection=new GoogleConnection(config,store,fetcher);const url=new URL(await connection.authorizationUrl('a'));
  await assert.rejects(()=>connection.complete('code',url.searchParams.get('state')!,'a'),/exactly one/);assert.equal(connection.connected,false);assert.equal(store.get('google-refresh'),undefined);
 });
+test('revoked owner during Google setup cannot persist a new grant',async(t)=>{
+ const directory=mkdtempSync(join(tmpdir(),'nest-revoked-'));const store=new Store(directory);t.after(()=>{store.close();rmSync(directory,{recursive:true,force:true});});
+ const config=readConfig({GOOGLE_CLIENT_ID:'fake',GOOGLE_CLIENT_SECRET:'fake',GOOGLE_DEVICE_ACCESS_PROJECT_ID:'project-test',TOKEN_ENCRYPTION_KEY:randomBytes(32).toString('base64')});
+ const fetcher:typeof fetch=async(input)=>Response.json(String(input).endsWith('/token')?{access_token:'fake',refresh_token:'fake',expires_in:3600}:{devices:[{type:'sdm.devices.types.THERMOSTAT',name:resource}]});
+ const connection=new GoogleConnection(config,store,fetcher);const url=new URL(await connection.authorizationUrl('a'));
+ await assert.rejects(()=>connection.complete('code',url.searchParams.get('state')!,'a',()=>false),/revoked/);assert.equal(connection.connected,false);
+});
