@@ -74,3 +74,7 @@ test('a persistence failure cannot leave the in-process command lock stuck',asyn
  const {service,store}=setup(t,null);t.mock.method(store,'saveRequest',()=>{throw new Error('disk full');});
  await assert.rejects(()=>service.command('guest',randomUUID(),{type:'mode',mode:'OFF'},()=>true));assert.equal(service.busy,false);
 });
+test('reconnecting during token acquisition invalidates the final dispatch guard',async(t)=>{
+ let release:()=>void=()=>{};let sent=false;const {service}=setup(t,{getDevice:async()=>snapshot(),execute:async(_command,guard)=>{await new Promise<void>(r=>{release=r;});if(!guard?.())throw new GoogleApiError('ACCESS_REVOKED','Connection changed.',{status:403});sent=true;}});
+ const pending=service.command('guest',randomUUID(),{type:'mode',mode:'OFF'},()=>true);await new Promise(r=>setTimeout(r,0));service.reset();release();assert.equal((await pending).status,403);assert.equal(sent,false);
+});

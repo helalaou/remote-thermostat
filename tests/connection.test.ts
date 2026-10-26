@@ -40,3 +40,16 @@ test('revoked owner during Google setup cannot persist a new grant',async(t)=>{
  const connection=new GoogleConnection(config,store,fetcher);const url=new URL(await connection.authorizationUrl('a'));
  await assert.rejects(()=>connection.complete('code',url.searchParams.get('state')!,'a',()=>false),/revoked/);assert.equal(connection.connected,false);
 });
+test('old refresh completion cannot overwrite a newer Google grant',async(t)=>{
+ const {encryptSecret}=await import('../src/crypto.ts');const directory=mkdtempSync(join(tmpdir(),'nest-refresh-race-'));const store=new Store(directory);t.after(()=>{store.close();rmSync(directory,{recursive:true,force:true});});
+ const config=readConfig({GOOGLE_CLIENT_ID:'fake',GOOGLE_CLIENT_SECRET:'fake',GOOGLE_DEVICE_ACCESS_PROJECT_ID:'project-test',TOKEN_ENCRYPTION_KEY:randomBytes(32).toString('base64')});
+ store.set('google-refresh',encryptSecret('old-refresh',config.encryptionKey!,'google-refresh'));store.set('google-device-resource',resource);
+ let release:(response:Response)=>void=()=>{};
+ const fetcher:typeof fetch=async(input,init)=>{
+   if(String(input).endsWith('/devices'))return Response.json({devices:[{type:'sdm.devices.types.THERMOSTAT',name:resource}]});
+   if(new URLSearchParams(init?.body as URLSearchParams).get('grant_type')==='refresh_token')return new Promise<Response>(r=>{release=r;});
+   return Response.json({access_token:'new-access',refresh_token:'new-refresh',expires_in:3600});
+ };
+ const connection=new GoogleConnection(config,store,fetcher);const pending=connection.accessToken();const url=new URL(await connection.authorizationUrl('owner'));await connection.complete('code',url.searchParams.get('state')!,'owner');const encrypted=store.get('google-refresh');
+ release(Response.json({access_token:'old-access',refresh_token:'old-rotated',expires_in:3600}));await assert.rejects(()=>pending,/changed/);assert.equal(store.get('google-refresh'),encrypted);assert.equal(await connection.accessToken(),'new-access');
+});

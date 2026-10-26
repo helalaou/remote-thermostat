@@ -13,6 +13,7 @@ interface TokenResponse { access_token: string; expires_in: number; refresh_toke
 /** Owner Nest authorization is separate from the neighbor's application login. */
 export class GoogleConnection {
   config: Config; store: Store; fetcher: typeof fetch;
+  generation=0;
   cached?: { token: string; expiresAt: number }; refreshing?: Promise<string>;
   constructor(config: Config, store: Store, fetcher: typeof fetch = fetch) { this.config=config; this.store=store; this.fetcher=fetcher; }
   get resource(): string | undefined {
@@ -55,6 +56,7 @@ export class GoogleConnection {
       this.store.set('google-device-resource',selected.name);
       this.store.db.exec('COMMIT');
     } catch (error) { this.store.db.exec('ROLLBACK'); throw error; }
+    this.generation++;
     this.cached={token:tokens.access_token,expiresAt:Date.now()+tokens.expires_in*1000-60_000};
   }
   async accessToken(): Promise<string> {
@@ -65,8 +67,10 @@ export class GoogleConnection {
     try { return await this.refreshing; } finally { this.refreshing=undefined; }
   }
   private async refresh(): Promise<string> {
+    const generation=this.generation;
     const refresh=decryptSecret(this.store.get('google-refresh')!,this.config.encryptionKey!,'google-refresh');
     const tokens=await this.tokenRequest({refresh_token:refresh,grant_type:'refresh_token'});
+    if(generation!==this.generation)throw new Error('The Google connection changed during token refresh.');
     if(tokens.refresh_token) this.store.set('google-refresh',encryptSecret(tokens.refresh_token,this.config.encryptionKey!,'google-refresh'));
     this.cached={token:tokens.access_token,expiresAt:Date.now()+tokens.expires_in*1000-60_000};
     return tokens.access_token;

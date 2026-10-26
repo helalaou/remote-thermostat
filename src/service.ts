@@ -56,6 +56,7 @@ export class ThermostatService {
     try{
       save(202,{accepted:false,confirmed:false,outcomeUnknown:true,message:'This request is still pending, or the server restarted before its outcome was known. Refresh the thermostat; do not repeat it automatically.'});
       const initialClient=this.client();
+      const generation=this.generation;
       const snapshot=await this.read(true);
       const command=validateCommand(input,snapshot,this.policy,this.now());
       if(!authorized())throw new CommandValidationError('ACCESS_REVOKED','Your access has expired or was revoked.',403);
@@ -64,7 +65,8 @@ export class ThermostatService {
       const client=this.client();if(client!==initialClient)throw new CommandValidationError('CONNECTION_CHANGED','The owner changed the connection. Refresh before trying again.',409);if(!client)throw new CommandValidationError('NOT_CONNECTED','Google Nest is no longer connected.',503);
       dispatched=true;
       const dispatchedAt=this.now();
-      await client.execute(command,authorized);
+      await client.execute(command,()=>authorized() && generation===this.generation && this.client()===initialClient);
+      if(generation!==this.generation)return save(200,{accepted:true,confirmed:false,message:'Google accepted the change before the connection changed. Its result has not been confirmed; refresh the current thermostat.'});
       this.snapshot=undefined; // an old target must never masquerade as confirmation
       let readback:ThermostatSnapshot|undefined;
       try{readback=await this.read(true);}catch{/* Accepted does not mean read back. */}
