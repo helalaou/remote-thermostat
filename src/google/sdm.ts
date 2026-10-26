@@ -59,22 +59,23 @@ export class SdmClient {
   }
 
   /** Acceptance is NOT readback or proof that the HVAC has started. */
-  async execute(command: SdmCommand): Promise<CommandReceipt> {
+  async execute(command: SdmCommand, authorized: () => boolean = () => true): Promise<CommandReceipt> {
     assertWireCommand(command);
     // Snapshot before awaiting tokens so callers cannot mutate an already-checked
     // request while token refresh is in progress.
     const checked = structuredClone(command);
-    await this.#request("POST", checked);
+    await this.#request("POST", checked, authorized);
     return { accepted: true, confirmed: false };
   }
 
-  async #request(method: "GET" | "POST", command?: SdmCommand): Promise<unknown> {
+  async #request(method: "GET" | "POST", command?: SdmCommand, authorized: () => boolean = () => true): Promise<unknown> {
     let token: string;
     try { token = await this.#accessToken(); }
     catch { throw new GoogleApiError("REAUTH_REQUIRED", "The owner needs to reconnect Google Nest."); }
     if (typeof token !== "string" || token.length < 1 || /[\r\n]/.test(token)) {
       throw new GoogleApiError("REAUTH_REQUIRED", "The owner needs to reconnect Google Nest.");
     }
+    if (method === "POST" && !authorized()) throw new GoogleApiError("ACCESS_REVOKED", "Your access was revoked before the change could be sent.", { status: 403 });
     let response: Response;
     try {
       response = await this.#fetch(SDM_ORIGIN + this.#deviceResource + (method === "POST" ? ":executeCommand" : ""), {

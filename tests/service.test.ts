@@ -65,3 +65,12 @@ test('a reset during read never publishes the previous connection snapshot',asyn
  let release:()=>void=()=>{};const {service}=setup(t,{getDevice:async()=>{await new Promise<void>(r=>{release=r;});return snapshot();},execute:async()=>{}});
  const pending=service.status();service.reset();release();const result=await pending;assert.equal(result.stale,true);assert.equal(result.snapshot,undefined);
 });
+test('status remains stale while an earlier command can still reach the thermostat',async(t)=>{
+ let release:()=>void=()=>{};const {service}=setup(t,{getDevice:async()=>snapshot(),execute:async()=>new Promise<void>(r=>{release=r;})});
+ const pending=service.command('guest',randomUUID(),{type:'mode',mode:'OFF'},()=>true);
+ await new Promise(r=>setTimeout(r,0));const status=await service.status();assert.equal(status.stale,true);assert.equal(status.commandInProgress,true);release();await pending;
+});
+test('a persistence failure cannot leave the in-process command lock stuck',async(t)=>{
+ const {service,store}=setup(t,null);t.mock.method(store,'saveRequest',()=>{throw new Error('disk full');});
+ await assert.rejects(()=>service.command('guest',randomUUID(),{type:'mode',mode:'OFF'},()=>true));assert.equal(service.busy,false);
+});

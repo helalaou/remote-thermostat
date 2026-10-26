@@ -141,3 +141,9 @@ test("Retry-After accepts seconds and dates, rejects invalid values and bounds d
   assert.equal(parseRetryAfter(null, now), null);
   assert.equal(parseRetryAfter("Thu, 01 Jan 2026 11:00:00 GMT", now), null);
 });
+test('revocation during token refresh blocks the eventual command dispatch', async () => {
+  let allowed=true;let calls=0;let release:(value:string)=>void=()=>{};
+  const client=new SdmClient({deviceResource:'enterprises/fake/devices/fake',accessToken:()=>new Promise<string>(r=>{release=r;}),fetch:async()=>{calls++;return Response.json({});}});
+  const pending=client.execute({command:'sdm.devices.commands.ThermostatMode.SetMode',params:{mode:'OFF'}},()=>allowed);
+  allowed=false;release('fake-token');await assert.rejects(()=>pending,/revoked/);assert.equal(calls,0);
+});

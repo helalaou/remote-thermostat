@@ -3,7 +3,7 @@ import { Store, RateLimitError } from './store.ts';
 import { CommandValidationError, validateCommand, type ControlPolicy, type SdmCommand, type ThermostatSnapshot } from './domain/thermostat.ts';
 import { GoogleApiError } from './google/sdm.ts';
 
-export interface DeviceClient { getDevice():Promise<ThermostatSnapshot>; execute(command:SdmCommand):Promise<unknown> }
+export interface DeviceClient { getDevice():Promise<ThermostatSnapshot>; execute(command:SdmCommand,authorized?:()=>boolean):Promise<unknown> }
 export interface CommandResponse { accepted:boolean; confirmed:boolean; message:string; snapshot?:ThermostatSnapshot; outcomeUnknown?:boolean; retryAfterSeconds?:number }
 export interface ServiceOptions { store:Store; client:()=>DeviceClient|null; policy:Partial<ControlPolicy>; now?:()=>number }
 export class ThermostatService {
@@ -35,6 +35,7 @@ export class ThermostatService {
   async status(){
     const limits={minCelsius:this.policy.minCelsius??10,maxCelsius:this.policy.maxCelsius??30,minRangeGapCelsius:this.policy.minRangeGapCelsius??1.5};
     if(!this.client())return{connected:false,stale:true,limits,message:'Not connected. The owner can finish Google setup later.'};
+    if(this.busy)return{connected:true,snapshot:this.snapshot,stale:true,commandInProgress:true,checkedAt:this.snapshot?.observedAt,limits,message:'A change is still in progress. Wait for its outcome before sending another.'};
     try{const snapshot=await this.read();return{connected:true,snapshot,stale:false,checkedAt:snapshot.observedAt,limits};}
     catch(error){return{connected:true,snapshot:this.snapshot,stale:true,checkedAt:this.snapshot?.observedAt,limits,message:error instanceof GoogleApiError||error instanceof RateLimitError?error.message:'Unable to refresh thermostat status.',retryAfterSeconds:error instanceof RateLimitError?error.retryAfterSeconds:this.cooldown()||undefined};}
   }
@@ -51,9 +52,9 @@ export class ThermostatService {
     if(this.busy)throw new CommandValidationError('COMMAND_BUSY','Another change is in progress. Refresh before trying again.',409);
     this.busy=true;
     const save=(status:number,body:CommandResponse)=>{this.store.saveRequest(requestId,keyId,{fingerprint,status,body});return{status,body};};
-    save(202,{accepted:false,confirmed:false,outcomeUnknown:true,message:'This request is still pending, or the server restarted before its outcome was known. Refresh the thermostat; do not repeat it automatically.'});
     let dispatched=false;
     try{
+      save(202,{accepted:false,confirmed:false,outcomeUnknown:true,message:'This request is still pending, or the server restarted before its outcome was known. Refresh the thermostat; do not repeat it automatically.'});
       const initialClient=this.client();
       const snapshot=await this.read(true);
       const command=validateCommand(input,snapshot,this.policy,this.now());
@@ -63,7 +64,7 @@ export class ThermostatService {
       const client=this.client();if(client!==initialClient)throw new CommandValidationError('CONNECTION_CHANGED','The owner changed the connection. Refresh before trying again.',409);if(!client)throw new CommandValidationError('NOT_CONNECTED','Google Nest is no longer connected.',503);
       dispatched=true;
       const dispatchedAt=this.now();
-      await client.execute(command);
+      await client.execute(command,authorized);
       this.snapshot=undefined; // an old target must never masquerade as confirmation
       let readback:ThermostatSnapshot|undefined;
       try{readback=await this.read(true);}catch{/* Accepted does not mean read back. */}
