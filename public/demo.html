@@ -1,14 +1,17 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <meta name="theme-color" content="#f7f5ef">
-    <meta name="description" content="A small, private control for one Nest thermostat. Share the comfort, not your Google Home.">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#f7f5ef" />
+    <meta
+      name="description"
+      content="A small, private control for one Nest thermostat. Share the comfort, not your Google Home."
+    />
     <title>Neighbor Thermostat · Local demo</title>
-    <meta name="demo-only" content="true">
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="/styles.css">
+    <meta name="demo-only" content="true" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/styles.css" />
     <script src="/app.js" type="module"></script>
   </head>
   <body>
@@ -16,97 +19,329 @@
     <div class="app-shell">
       <header class="site-header">
         <a class="brand" href="/" aria-label="Neighbor Thermostat home">
-          <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="m4 11 8-7 8 7v8a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-8Z"/><path d="M9 20v-6h6v6"/></svg></span>
+          <span class="brand-mark" aria-hidden="true"
+            ><svg viewBox="0 0 24 24" fill="none">
+              <path d="m4 11 8-7 8 7v8a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-8Z" />
+              <path d="M9 20v-6h6v6" /></svg
+          ></span>
           <span>neighbor<span class="brand-subtitle">THERMOSTAT</span></span>
         </a>
         <div class="header-actions">
           <span id="session-label" class="session-label">Private control</span>
-          <button id="login-open" class="button button-quiet" type="button">Sign in <span aria-hidden="true">↗</span></button>
+          <button id="login-open" class="button button-quiet" type="button">
+            Sign in <span aria-hidden="true">↗</span>
+          </button>
           <button id="logout" class="button button-quiet" type="button" hidden>Sign out</button>
         </div>
       </header>
 
       <main id="main" tabindex="-1">
         <section class="intro" aria-labelledby="page-title">
-          <div><p class="eyebrow">ONE THERMOSTAT. YOUR COMFORT.</p><h1 id="page-title">Make yourself<br class="mobile-break"> comfortable.</h1></div>
+          <div>
+            <p class="eyebrow">ONE THERMOSTAT. YOUR COMFORT.</p>
+            <h1 id="page-title">
+              Make yourself<br class="mobile-break" />
+              comfortable.
+            </h1>
+          </div>
           <div class="unit-control" role="group" aria-label="Temperature display units">
             <button id="unit-c" type="button" aria-pressed="true">°C</button>
             <button id="unit-f" type="button" aria-pressed="false">°F</button>
           </div>
         </section>
 
-        <div id="demo-banner" class="demo-banner" hidden><span><strong>Local demo</strong> · Sample readings. Nothing changes in your home.</span><button id="exit-demo" type="button">Exit demo <span aria-hidden="true">×</span></button></div>
-        <div id="notice" class="notice" role="status" aria-live="polite"><span class="notice-icon" aria-hidden="true">i</span><span id="notice-text">Checking your connection…</span></div>
+        <div id="demo-banner" class="demo-banner" hidden>
+          <span><strong>Local demo</strong> · Sample readings. Nothing changes in your home.</span
+          ><button id="exit-demo" type="button">Exit demo <span aria-hidden="true">×</span></button>
+        </div>
+        <div id="notice" class="notice" role="status" aria-live="polite">
+          <span class="notice-icon" aria-hidden="true">i</span
+          ><span id="notice-text">Checking your connection…</span>
+        </div>
 
         <div class="dashboard">
           <section class="thermostat-card card" aria-labelledby="thermostat-title">
-            <div class="card-top"><div><p class="eyebrow">YOUR SPACE</p><h2 id="thermostat-title">Thermostat</h2></div><span id="connection-badge" class="status-badge"><span class="status-dot"></span><span id="connection-label">Not connected</span></span></div>
+            <div class="card-top">
+              <div>
+                <p class="eyebrow">YOUR SPACE</p>
+                <h2 id="thermostat-title">Thermostat</h2>
+              </div>
+              <span id="connection-badge" class="status-badge"
+                ><span class="status-dot"></span
+                ><span id="connection-label">Not connected</span></span
+              >
+            </div>
             <div class="thermostat-visual">
               <div id="dial" class="dial" data-mode="disconnected">
                 <div class="dial-face">
                   <span id="dial-label" class="dial-label">Target temperature</span>
-                  <div class="dial-number" aria-live="polite" aria-atomic="true"><span id="target-value">—</span><span id="target-unit" class="dial-unit">°C</span></div>
+                  <div class="dial-number" aria-live="polite" aria-atomic="true">
+                    <span id="target-value">—</span
+                    ><span id="target-unit" class="dial-unit">°C</span>
+                  </div>
                   <span id="dial-description" class="dial-description">Waiting for connection</span>
                 </div>
               </div>
             </div>
             <div id="stepper" class="temperature-stepper" aria-label="Adjust target temperature">
-              <button id="temperature-down" type="button" class="step-button" aria-label="Decrease target temperature" disabled>−</button>
+              <button
+                id="temperature-down"
+                type="button"
+                class="step-button"
+                aria-label="Decrease target temperature"
+                disabled
+              >
+                −
+              </button>
               <span id="stepper-hint">Connect to adjust</span>
-              <button id="temperature-up" type="button" class="step-button" aria-label="Increase target temperature" disabled>+</button>
+              <button
+                id="temperature-up"
+                type="button"
+                class="step-button"
+                aria-label="Increase target temperature"
+                disabled
+              >
+                +
+              </button>
             </div>
             <div id="range-controls" class="range-controls" hidden>
-              <label>Heat to <span><input id="range-heat" type="number" inputmode="decimal" step="0.5"><span class="range-unit">°C</span></span></label>
+              <label
+                >Heat to
+                <span
+                  ><input id="range-heat" type="number" inputmode="decimal" step="0.5" /><span
+                    class="range-unit"
+                    >°C</span
+                  ></span
+                ></label
+              >
               <span class="range-divider" aria-hidden="true">—</span>
-              <label>Cool to <span><input id="range-cool" type="number" inputmode="decimal" step="0.5"><span class="range-unit">°C</span></span></label>
+              <label
+                >Cool to
+                <span
+                  ><input id="range-cool" type="number" inputmode="decimal" step="0.5" /><span
+                    class="range-unit"
+                    >°C</span
+                  ></span
+                ></label
+              >
             </div>
-            <button id="apply-temperature" type="button" class="button button-primary apply-button" disabled>Apply temperature</button>
+            <button
+              id="apply-temperature"
+              type="button"
+              class="button button-primary apply-button"
+              disabled
+            >
+              Apply temperature
+            </button>
             <p id="target-help" class="target-help">No changes are sent until you apply.</p>
-            <div class="readings"><div><span class="reading-label"><svg aria-hidden="true" viewBox="0 0 20 20" fill="none"><path d="M8 12V4a2 2 0 0 1 4 0v8a4 4 0 1 1-4 0Z"/><path d="M10 7v8"/></svg>Inside</span><strong id="ambient-value">—</strong></div><span class="reading-divider"></span><div><span class="reading-label"><svg aria-hidden="true" viewBox="0 0 20 20" fill="none"><path d="M10 2s-5 6-5 10a5 5 0 0 0 10 0c0-4-5-10-5-10Z"/></svg>Humidity</span><strong id="humidity-value">—</strong></div></div>
-            <div class="sync-row"><span id="sync-status"><span class="sync-dot" aria-hidden="true"></span>No live readings yet</span><button id="refresh" class="refresh-button" type="button" aria-label="Refresh thermostat status"><svg aria-hidden="true" viewBox="0 0 20 20" fill="none"><path d="M16 6a7 7 0 1 0 1 7M16 2v5h-5"/></svg>Refresh</button></div>
+            <div class="readings">
+              <div>
+                <span class="reading-label"
+                  ><svg aria-hidden="true" viewBox="0 0 20 20" fill="none">
+                    <path d="M8 12V4a2 2 0 0 1 4 0v8a4 4 0 1 1-4 0Z" />
+                    <path d="M10 7v8" /></svg
+                  >Inside</span
+                ><strong id="ambient-value">—</strong>
+              </div>
+              <span class="reading-divider"></span>
+              <div>
+                <span class="reading-label"
+                  ><svg aria-hidden="true" viewBox="0 0 20 20" fill="none">
+                    <path d="M10 2s-5 6-5 10a5 5 0 0 0 10 0c0-4-5-10-5-10Z" /></svg
+                  >Humidity</span
+                ><strong id="humidity-value">—</strong>
+              </div>
+            </div>
+            <div class="sync-row">
+              <span id="sync-status"
+                ><span class="sync-dot" aria-hidden="true"></span>No live readings yet</span
+              ><button
+                id="refresh"
+                class="refresh-button"
+                type="button"
+                aria-label="Refresh thermostat status"
+              >
+                <svg aria-hidden="true" viewBox="0 0 20 20" fill="none">
+                  <path d="M16 6a7 7 0 1 0 1 7M16 2v5h-5" /></svg
+                >Refresh
+              </button>
+            </div>
           </section>
 
           <div class="side-column">
             <section class="card controls-card" aria-labelledby="mode-title">
-              <div class="section-heading"><span class="small-icon" aria-hidden="true">◉</span><h2 id="mode-title">System mode</h2></div>
-              <p id="mode-help" class="section-description">Available controls appear after connection.</p>
-              <div id="mode-buttons" class="mode-buttons" role="group" aria-label="Thermostat system mode"><button type="button" disabled>Heat</button><button type="button" disabled>Off</button></div>
-              <div id="eco-controls" class="eco-controls" hidden><div><h3><span aria-hidden="true">⌁</span> Eco mode</h3><p id="eco-description">Use the thermostat’s Eco temperatures.</p></div><button id="eco-toggle" class="toggle" type="button" aria-pressed="false" aria-label="Enable Eco mode"><span></span></button></div>
+              <div class="section-heading">
+                <span class="small-icon" aria-hidden="true">◉</span>
+                <h2 id="mode-title">System mode</h2>
+              </div>
+              <p id="mode-help" class="section-description">
+                Available controls appear after connection.
+              </p>
+              <div
+                id="mode-buttons"
+                class="mode-buttons"
+                role="group"
+                aria-label="Thermostat system mode"
+              >
+                <button type="button" disabled>Heat</button
+                ><button type="button" disabled>Off</button>
+              </div>
+              <div id="eco-controls" class="eco-controls" hidden>
+                <div>
+                  <h3><span aria-hidden="true">⌁</span> Eco mode</h3>
+                  <p id="eco-description">Use the thermostat’s Eco temperatures.</p>
+                </div>
+                <button
+                  id="eco-toggle"
+                  class="toggle"
+                  type="button"
+                  aria-pressed="false"
+                  aria-label="Enable Eco mode"
+                >
+                  <span></span>
+                </button>
+              </div>
               <p id="eco-readings" class="eco-readings" hidden></p>
             </section>
 
             <section id="fan-card" class="card controls-card" aria-labelledby="fan-title" hidden>
-              <div class="section-heading"><svg class="small-icon fan-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="2"/><path d="M10 10C4 8 7 2 11 3s5 5 2 7M14 11c5-3 9 2 6 5s-7 3-7-1M11 14c1 6-6 6-7 2s2-7 5-4"/></svg><h2 id="fan-title">Fan timer</h2></div>
-              <p id="fan-description" class="section-description">Circulate air without changing your target.</p>
-              <div class="fan-actions"><label class="sr-only" for="fan-duration">Fan duration</label><select id="fan-duration"><option value="900">15 minutes</option><option value="1800">30 minutes</option><option value="3600">1 hour</option><option value="7200">2 hours</option><option value="14400">4 hours</option><option value="28800">8 hours</option><option value="43200">12 hours</option></select><button id="fan-start" type="button" class="button button-secondary">Run fan</button></div>
-              <button id="fan-stop" type="button" class="button button-quiet fan-stop" hidden>Stop fan timer</button>
+              <div class="section-heading">
+                <svg class="small-icon fan-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="2" />
+                  <path
+                    d="M10 10C4 8 7 2 11 3s5 5 2 7M14 11c5-3 9 2 6 5s-7 3-7-1M11 14c1 6-6 6-7 2s2-7 5-4"
+                  />
+                </svg>
+                <h2 id="fan-title">Fan timer</h2>
+              </div>
+              <p id="fan-description" class="section-description">
+                Circulate air without changing your target.
+              </p>
+              <div class="fan-actions">
+                <label class="sr-only" for="fan-duration">Fan duration</label
+                ><select id="fan-duration">
+                  <option value="900">15 minutes</option>
+                  <option value="1800">30 minutes</option>
+                  <option value="3600">1 hour</option>
+                  <option value="7200">2 hours</option>
+                  <option value="14400">4 hours</option>
+                  <option value="28800">8 hours</option>
+                  <option value="43200">12 hours</option></select
+                ><button id="fan-start" type="button" class="button button-secondary">
+                  Run fan
+                </button>
+              </div>
+              <button id="fan-stop" type="button" class="button button-quiet fan-stop" hidden>
+                Stop fan timer
+              </button>
             </section>
 
             <section id="getting-started" class="info-card" aria-labelledby="info-title">
-              <span class="info-illustration" aria-hidden="true"><svg viewBox="0 0 48 48" fill="none"><path d="m9 22 15-13 15 13v16H9V22Z"/><path d="M19 38V27h10v11M15 17V9h5v4"/><path d="M32 8c3-4 7-3 7 1 0 3-4 5-7 7-3-2-7-4-7-7 0-4 4-5 7-1Z"/></svg></span>
-              <h2 id="info-title">Share the comfort.<br>Not your Google Home.</h2>
-              <p id="info-description">This app controls one thermostat only. Your other home devices stay yours.</p>
-              <button id="start-demo" type="button" class="text-button">Try the local demo <span aria-hidden="true">↗</span></button>
+              <span class="info-illustration" aria-hidden="true"
+                ><svg viewBox="0 0 48 48" fill="none">
+                  <path d="m9 22 15-13 15 13v16H9V22Z" />
+                  <path d="M19 38V27h10v11M15 17V9h5v4" />
+                  <path d="M32 8c3-4 7-3 7 1 0 3-4 5-7 7-3-2-7-4-7-7 0-4 4-5 7-1Z" /></svg
+              ></span>
+              <h2 id="info-title">Share the comfort.<br />Not your Google Home.</h2>
+              <p id="info-description">
+                This app controls one thermostat only. Your other home devices stay yours.
+              </p>
+              <button id="start-demo" type="button" class="text-button">
+                Try the local demo <span aria-hidden="true">↗</span>
+              </button>
               <span class="demo-footnote">No account or thermostat needed.</span>
             </section>
 
-            <section id="owner-card" class="card controls-card" aria-labelledby="owner-title" hidden>
-              <div class="section-heading"><span class="small-icon" aria-hidden="true">⌘</span><h2 id="owner-title">Owner settings</h2></div>
+            <section
+              id="owner-card"
+              class="card controls-card"
+              aria-labelledby="owner-title"
+              hidden
+            >
+              <div class="section-heading">
+                <span class="small-icon" aria-hidden="true">⌘</span>
+                <h2 id="owner-title">Owner settings</h2>
+              </div>
               <p id="owner-description" class="section-description">Checking configuration…</p>
-              <button id="google-connect" class="button button-secondary full-width" type="button" disabled>Connect Google Nest</button>
-              <p class="settings-note">Only the owner connects Google. Neighbor access is managed with the local admin command.</p>
+              <button
+                id="google-connect"
+                class="button button-secondary full-width"
+                type="button"
+                disabled
+              >
+                Connect Google Nest
+              </button>
+              <p class="settings-note">
+                Only the owner connects Google. Neighbor access is managed with the local admin
+                command.
+              </p>
               <div id="access-list" class="access-list"></div>
             </section>
           </div>
         </div>
-        <section class="limitations" aria-label="Supported controls"><span aria-hidden="true">ⓘ</span><p>Just the controls Nest makes available. Schedules, Eco temperature limits, temperature locks, and other Nest settings stay in the Google Home or Nest app. This app is not a safety or emergency control.</p></section>
+        <section class="limitations" aria-label="Supported controls">
+          <span aria-hidden="true">ⓘ</span>
+          <p>
+            Just the controls Nest makes available. Schedules, Eco temperature limits, temperature
+            locks, and other Nest settings stay in the Google Home or Nest app. This app is not a
+            safety or emergency control.
+          </p>
+        </section>
       </main>
-      <footer><span>neighbor <span class="footer-dot">·</span> a little comfort, shared.</span><span>Independent project · Not affiliated with Google Nest</span></footer>
+      <footer>
+        <span>neighbor <span class="footer-dot">·</span> a little comfort, shared.</span
+        ><span>Independent project · Not affiliated with Google Nest</span>
+      </footer>
     </div>
     <dialog id="login-dialog" aria-labelledby="login-title">
-      <form id="login-form" class="dialog-content"><div class="dialog-heading"><h2 id="login-title">Welcome in.</h2><button class="dialog-close" id="login-close" type="button" aria-label="Close sign in">×</button></div><p>Paste the private access key provided by the owner. It unlocks only this thermostat.</p><label for="access-key">Access key</label><input id="access-key" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" required maxlength="256" placeholder="Paste your access key"><p class="field-note">Treat this key like a password. Never share it publicly.</p><p id="login-error" class="form-error" role="alert" hidden></p><button id="login-submit" type="submit" class="button button-primary full-width">Unlock controls</button></form>
+      <form id="login-form" class="dialog-content">
+        <div class="dialog-heading">
+          <h2 id="login-title">Welcome in.</h2>
+          <button class="dialog-close" id="login-close" type="button" aria-label="Close sign in">
+            ×
+          </button>
+        </div>
+        <p>Paste the private access key provided by the owner. It unlocks only this thermostat.</p>
+        <label for="access-key">Access key</label
+        ><input
+          id="access-key"
+          type="password"
+          autocomplete="off"
+          autocapitalize="off"
+          spellcheck="false"
+          required
+          maxlength="256"
+          placeholder="Paste your access key"
+        />
+        <p class="field-note">Treat this key like a password. Never share it publicly.</p>
+        <p id="login-error" class="form-error" role="alert" hidden></p>
+        <button id="login-submit" type="submit" class="button button-primary full-width">
+          Unlock controls
+        </button>
+      </form>
     </dialog>
-    <dialog id="confirm-dialog" aria-labelledby="confirm-title"><div class="dialog-content"><div class="dialog-heading"><h2 id="confirm-title">Confirm change</h2><button id="confirm-close" class="dialog-close" type="button" aria-label="Cancel change">×</button></div><p id="confirm-description"></p><p id="confirm-warning" class="field-note">This changes the thermostat in your home.</p><div class="dialog-actions"><button id="confirm-cancel" type="button" class="button button-secondary">Cancel</button><button id="confirm-apply" type="button" class="button button-primary">Confirm</button></div></div></dialog>
-    <noscript><div class="noscript">JavaScript is needed for thermostat controls. Nothing has been changed. Use the Google Home or Nest app if needed.</div></noscript>
+    <dialog id="confirm-dialog" aria-labelledby="confirm-title">
+      <div class="dialog-content">
+        <div class="dialog-heading">
+          <h2 id="confirm-title">Confirm change</h2>
+          <button id="confirm-close" class="dialog-close" type="button" aria-label="Cancel change">
+            ×
+          </button>
+        </div>
+        <p id="confirm-description"></p>
+        <p id="confirm-warning" class="field-note">This changes the thermostat in your home.</p>
+        <div class="dialog-actions">
+          <button id="confirm-cancel" type="button" class="button button-secondary">Cancel</button
+          ><button id="confirm-apply" type="button" class="button button-primary">Confirm</button>
+        </div>
+      </div>
+    </dialog>
+    <noscript
+      ><div class="noscript">
+        JavaScript is needed for thermostat controls. Nothing has been changed. Use the Google Home
+        or Nest app if needed.
+      </div></noscript
+    >
   </body>
 </html>

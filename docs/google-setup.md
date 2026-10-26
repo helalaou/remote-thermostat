@@ -14,12 +14,12 @@ For a remotely accessible app, finish [HTTPS deployment](self-hosting.md) first.
 
 ## 1. Understand the two projects
 
-| Item | What it is | App setting |
-| --- | --- | --- |
-| Google Cloud project | Holds the enabled SDM API and OAuth web client | No Cloud project ID setting |
-| OAuth client ID / secret | Identifies your web app to Google | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` |
-| Device Access project | Links that OAuth client to Nest access | `GOOGLE_DEVICE_ACCESS_PROJECT_ID` |
-| Device ID | Identifies the one chosen thermostat | `GOOGLE_DEVICE_ID`, optional for initial single-device discovery |
+| Item                     | What it is                                     | App setting                                                      |
+| ------------------------ | ---------------------------------------------- | ---------------------------------------------------------------- |
+| Google Cloud project     | Holds the enabled SDM API and OAuth web client | No Cloud project ID setting                                      |
+| OAuth client ID / secret | Identifies your web app to Google              | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`                       |
+| Device Access project    | Links that OAuth client to Nest access         | `GOOGLE_DEVICE_ACCESS_PROJECT_ID`                                |
+| Device ID                | Identifies the one chosen thermostat           | `GOOGLE_DEVICE_ID`, optional for initial single-device discovery |
 
 The Device Access project ID is **not** the Google Cloud project ID. Copy each value from the corresponding console. [Google project setup](https://developers.google.com/nest/device-access/get-started).
 
@@ -91,15 +91,15 @@ Live account linking and hardware behavior have **not** been validated merely be
 
 ## Common setup problems
 
-| Symptom | What to check |
-| --- | --- |
-| Redirect URI mismatch | OAuth web-client callback must exactly match `APP_ORIGIN` plus `/oauth/google/callback`. |
-| Access denied during consent | Correct Google account and, while testing, membership in the OAuth client's test users. |
-| Tokens stop working after a week | OAuth consent publishing/testing state; review Google's [refresh-token guidance](https://developers.google.com/identity/protocols/oauth2#expiration). Reconnect only after fixing the cause. |
-| No thermostat / multiple thermostats | Grant only the intended device, or set the correct fixed device ID before reconnecting. |
-| Stale data or quota warning | Wait for the retry time. Other integrations share the same thermostat command quota. Do not repeatedly click Apply. |
-| Target rejected in Eco or Off | Choose a supported standard mode or leave Eco explicitly first, then refresh and set the target. The app will not do this silently. |
-| App works, device does not respond | Check internet, power, Google connectivity, and the physical thermostat. `/healthz` checks the server only. |
+| Symptom                              | What to check                                                                                                                                                                                |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Redirect URI mismatch                | OAuth web-client callback must exactly match `APP_ORIGIN` plus `/oauth/google/callback`.                                                                                                     |
+| Access denied during consent         | Correct Google account and, while testing, membership in the OAuth client's test users.                                                                                                      |
+| Tokens stop working after a week     | OAuth consent publishing/testing state; review Google's [refresh-token guidance](https://developers.google.com/identity/protocols/oauth2#expiration). Reconnect only after fixing the cause. |
+| No thermostat / multiple thermostats | Grant only the intended device, or set the correct fixed device ID before reconnecting.                                                                                                      |
+| Stale data or quota warning          | Wait for the retry time. Other integrations share the same thermostat command quota. Do not repeatedly click Apply.                                                                          |
+| Target rejected in Eco or Off        | Choose a supported standard mode or leave Eco explicitly first, then refresh and set the target. The app will not do this silently.                                                          |
+| App works, device does not respond   | Check internet, power, Google connectivity, and the physical thermostat. `/healthz` checks the server only.                                                                                  |
 
 To withdraw Google's authorization, revoke the app's grant in Google's Partner Connections Manager/account permissions. Stop the app while investigating a compromised grant. Removing an app login key only revokes access to this app; it does not revoke the Google grant. This release does not yet provide an in-app Google disconnect control.
 
