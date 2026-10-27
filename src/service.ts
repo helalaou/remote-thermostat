@@ -123,7 +123,7 @@ export class ThermostatService {
         connected: false,
         stale: true,
         limits,
-        message: 'Not connected. The owner can finish Google setup later.',
+        message: 'Google Nest is not connected.',
       };
     if (this.busy)
       return {

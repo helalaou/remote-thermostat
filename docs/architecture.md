@@ -21,9 +21,9 @@ The browser is static HTML/CSS/JavaScript. It never talks directly to Google. No
 
 ## Two separate permissions
 
-**App access** is a server-generated 256-bit key exchanged through a POST sign-in form for an opaque session cookie. Keys are hashed before storage. An owner provisions the initial owner key from the local CLI; there is no first-visitor bootstrap or default credential. Neighbor keys are separate, expire, and can be revoked. Revocation is checked server-side, including for already-issued sessions.
+**App access** is a server-generated 256-bit key exchanged through a POST sign-in form for an opaque session cookie. Keys are hashed before storage. An owner provisions the initial owner key from the local CLI; there is no first-visitor bootstrap or default credential. Guest keys are separate, expire, and can be revoked. Revocation is checked server-side, including for already-issued sessions.
 
-**Google access** is the owner's explicit OAuth grant to the app. Google refresh tokens are encrypted at rest using an operator-provided key. Keep the encryption key separate from the database. Only owner routes can start a Google connection; revoke the grant in Google when you want to withdraw it. A neighbor never sees these tokens or joins Google Home.
+**Google access** is the owner's explicit OAuth grant to the app. Google refresh tokens are encrypted at rest using an operator-provided key. Keep the encryption key separate from the database. Only owner routes can start a Google connection; revoke the grant in Google when you want to withdraw it. A guest never sees these tokens or joins Google Home.
 
 A key identifies possession of a permission, not a verified human. Use one key per recipient, a descriptive label, and a private delivery channel. This intentionally trades a second identity-provider setup for simple personal self-hosting. It is not suitable for situations requiring identity proof, MFA, or enterprise account recovery.
 
@@ -48,7 +48,7 @@ A timeout can mean a command failed **or** that Google received it but the reply
 ## Safety and operational scope
 
 - App target bounds are operator policy, not equipment capability discovery.
-- The Google grant may outlive a neighbor's key. Revoke them independently as needed.
+- The Google grant may outlive a guest's key. Revoke them independently as needed.
 - Physical controls, existing schedules, and other integrations remain in charge of their own changes.
 - There is no background scheduling, presence sensing, automatic heating policy, or emergency alerting.
 - The app host and its administrator are trusted. Root access to a running server can obtain secrets; at-rest encryption does not protect against a fully compromised host.

@@ -14,7 +14,7 @@ This app can change the temperature in a real home. Treat access as carefully as
 
 The local CLI generates high-entropy access keys. They are bearer credentials, not passwords or verified identities. The database stores their hashes; sign-in sends the key in a POST body, then uses a server-side session with an HttpOnly cookie. Never transmit keys in URL parameters, fragments, logs, or public channels.
 
-A neighbor key grants the supported thermostat controls, including Off where available. It is not heating-only or a role with per-button restrictions. Share only with someone you trust to use the equipment. Use a separate expiring key per recipient; revoke it if a device is lost or access is no longer needed. Revocation invalidates sessions linked to that key.
+A guest key grants the supported thermostat controls, including Off where available. It is not heating-only or a role with per-button restrictions. Share only with someone you trust to use the equipment. Use a separate expiring key per recipient; revoke it if a device is lost or access is no longer needed. Revocation invalidates sessions linked to that key.
 
 The initial owner is provisioned locally, not assigned to the first browser visitor. Browser-provided role, device, or identity values are never authority. Mutating app routes require origin/CSRF checks, and owner operations require an owner session.
 
@@ -26,7 +26,7 @@ Do not log OAuth codes, callback query strings, request bodies, cookies, or toke
 
 ## What this protects against—and what it does not
 
-Server-side authorization, narrow command validation, CSRF protections, quotas, and one-device pinning reduce accidental and unauthorized control. They do not protect against a stolen active key/session, a malicious authorized neighbor, a compromised owner browser, an XSS introduced by a future change, a compromised host, or an outage at Google.
+Server-side authorization, narrow command validation, CSRF protections, quotas, and one-device pinning reduce accidental and unauthorized control. They do not protect against a stolen active key/session, a malicious authorized guest, a compromised owner browser, an XSS introduced by a future change, a compromised host, or an outage at Google.
 
 At-rest token encryption limits exposure from a database-only leak; it does not defeat an attacker who also gets the encryption key or running server. Google and device limits are enforced independently of app limits. A successful command response is not a guarantee of physical heating/cooling.
 

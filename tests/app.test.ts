@@ -245,3 +245,67 @@ test('first Google connection can start without an already discovered device', a
   assert.equal(response.status, 200);
   assert.equal(new URL((await response.json()).url).hostname, 'nestservices.google.com');
 });
+test('owner creates and revokes guest keys in the app; guests and owner keys are protected', async (t) => {
+  const { app, store, config } = setup(t);
+  const owner = store.createKey('owner', 'Owner');
+  const signed = await login(app, config.origin, owner.token);
+  const headers = {
+    Origin: config.origin,
+    'Content-Type': 'application/json',
+    Cookie: signed.cookie,
+    'X-CSRF-Token': signed.data.csrfToken,
+  };
+  const post = (body: unknown, h: Record<string, string> = headers) =>
+    app.request('/api/owner/keys', { method: 'POST', headers: h, body: JSON.stringify(body) });
+  for (const bad of [
+    { label: '', days: 7 },
+    { label: 'x', days: 0 },
+    { label: 'x', days: 366 },
+    { label: 'x', days: 1.5 },
+    { label: 'x'.repeat(81), days: 7 },
+    { label: 'x', days: 7, role: 'owner' },
+  ])
+    assert.equal((await post(bad)).status, 400);
+  const created = await post({ label: 'Sam', days: 7 });
+  assert.equal(created.status, 201);
+  const guest = await created.json();
+  assert.match(guest.token, /^nt_/);
+  assert.equal(guest.role, 'neighbor');
+  assert.ok(guest.expiresAt > Date.now() + 6 * 86_400_000);
+
+  const guestLogin = await login(app, config.origin, guest.token);
+  const guestHeaders = {
+    ...headers,
+    Cookie: guestLogin.cookie,
+    'X-CSRF-Token': guestLogin.data.csrfToken,
+  };
+  assert.equal((await post({ label: 'Other', days: 7 }, guestHeaders)).status, 403);
+  assert.equal(
+    (
+      await app.request(`/api/owner/keys/${guest.id}`, {
+        method: 'DELETE',
+        headers: guestHeaders,
+        body: '{}',
+      })
+    ).status,
+    403,
+  );
+  const noCsrf = { ...headers, 'X-CSRF-Token': '' };
+  assert.equal((await post({ label: 'Other', days: 7 }, noCsrf)).status, 403);
+
+  assert.equal(
+    (await app.request(`/api/owner/keys/${owner.id}`, { method: 'DELETE', headers, body: '{}' }))
+      .status,
+    404,
+  );
+  assert.equal(
+    (await app.request(`/api/owner/keys/${guest.id}`, { method: 'DELETE', headers, body: '{}' }))
+      .status,
+    200,
+  );
+  assert.equal(
+    (await app.request('/api/thermostat', { headers: { Cookie: guestLogin.cookie } })).status,
+    401,
+  );
+  assert.ok(store.hasOwner());
+});

@@ -8,7 +8,7 @@ const store = new Store(config.dataDir);
 const app = createApp({ config, store });
 const server = serve({ fetch: app.fetch, port: config.port, hostname: config.host }, () => {
   console.log(
-    `Neighbor Thermostat listening at ${config.origin}. Google connection is ${store.get('google-refresh') ? 'configured' : 'not connected'}.`,
+    `Remote Thermostat listening at ${config.origin}. Google connection is ${store.get('google-refresh') ? 'configured' : 'not connected'}.`,
   );
 });
 const maintenance = setInterval(() => store.prune(), 3_600_000);

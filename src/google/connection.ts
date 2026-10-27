@@ -14,7 +14,7 @@ interface TokenResponse {
   refresh_token?: string;
 }
 
-/** Owner Nest authorization is separate from the neighbor's application login. */
+/** Owner Nest authorization is separate from guest app logins. */
 export class GoogleConnection {
   config: Config;
   store: Store;

@@ -10,7 +10,7 @@ import { createApp } from '../src/app.ts';
 
 // Uses an existing local Chromium. Does not install a browser or contact Google.
 const executablePath = process.env.CHROMIUM_PATH || '/usr/bin/chromium';
-const directory = await mkdtemp(join(tmpdir(), 'neighbor-browser-'));
+const directory = await mkdtemp(join(tmpdir(), 'remote-thermostat-browser-'));
 const store = new Store(directory);
 const app = createApp({ config: readConfig({ APP_ORIGIN: 'http://localhost:3000' }), store });
 const server = serve({ fetch: app.fetch, port: 0, hostname: '127.0.0.1' });

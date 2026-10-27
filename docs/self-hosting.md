@@ -96,21 +96,21 @@ secrets:
 
 Use real absolute paths on the host, and remove `TOKEN_ENCRYPTION_KEY` and `GOOGLE_CLIENT_SECRET` from `.env` if using this approach. Docker's [secret guidance](https://docs.docker.com/compose/how-tos/environment-variables/set-environment-variables/) explains why mounted secrets are preferable to inspectable environment values. Secret files still require a trusted host and administrator.
 
-## 4. Give one neighbor access
+## 4. Give one guest access
 
 After checking your deployment, create a separate key:
 
 ```sh
-npm run admin -- create-neighbor "Neighbor"
+npm run admin -- create-guest "Guest"
 ```
 
 For Docker, prefix the command with `docker compose exec app`.
 
-Neighbor keys expire after 30 days by default. To choose a shorter period, pass `--days`, for example `npm run admin -- create-neighbor "Guest" --days 7`. Expiry invalidates access as well as sessions.
+Guest keys expire after 30 days by default. To choose a shorter period, pass `--days`, for example `npm run admin -- create-guest "Guest" --days 7`. Expiry invalidates access as well as sessions.
 
-Share the app's URL and the neighbor key through a private, trusted channel—preferably separately. The recipient signs in with that key; they do **not** join your Google Home or need your Google credentials. The key label is an audit label, not independently verified identity. A copied key can be used by whoever holds it.
+Share the app's URL and the guest key through a private, trusted channel—preferably separately. The recipient signs in with that key; they do **not** join your Google Home or need your Google credentials. The key label is an audit label, not independently verified identity. A copied key can be used by whoever holds it.
 
-A neighbor can use all controls that this app exposes for its one configured thermostat. They cannot manage app access or connect a Google account. This is not per-button permission management.
+A guest can use all controls that this app exposes for its one configured thermostat. They cannot manage app access or connect a Google account. This is not per-button permission management.
 
 To revoke access:
 
@@ -119,7 +119,7 @@ npm run admin -- list
 npm run admin -- revoke KEY_ID
 ```
 
-Use the non-secret ID shown by `list`, not the secret key. Revocation also invalidates that key's existing sessions. Create a new key rather than recycling a revoked one. Keep owner access separate from neighbor access; never share the owner key.
+Use the non-secret ID shown by `list`, not the secret key. Revocation also invalidates that key's existing sessions. Create a new key rather than recycling a revoked one. Keep owner access separate from guest access; never share the owner key.
 
 ## 5. Set app temperature bounds
 

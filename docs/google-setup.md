@@ -10,7 +10,7 @@ Have a working Nest thermostat linked to a consumer Google account. Legacy Nest-
 
 First confirm your model still has cloud support. Nest Learning Thermostat 1st gen, 2nd gen, and European 2nd gen lost connected features on October 25, 2025; this app cannot restore them. [Google end-of-support notice](https://support.google.com/googlehome/answer/16233096?hl=en).
 
-For a remotely accessible app, finish [HTTPS deployment](self-hosting.md) first. You must be signed in to the app with an **owner** key for account linking. Neighbors do not perform this setup.
+For a remotely accessible app, finish [HTTPS deployment](self-hosting.md) first. You must be signed in to the app with an **owner** key for account linking. Guests do not perform this setup.
 
 ## 1. Understand the two projects
 
@@ -74,9 +74,9 @@ Sign in as the owner and open the connection panel. Choose **Connect Google**. Y
 
 Authorize only the intended home/thermostat. Do not enable other devices unnecessarily. A Google **unverified OAuth app** warning can be expected for the personal project you created; verify its name and requested permission before continuing. This is not permission to bypass browser certificate, phishing, or malware warnings—stop for those, or for any unknown app. The requested `sdm.service` scope is for SDM device access, not your entire Google account. [Google's account-linking flow](https://developers.google.com/nest/device-access/authorize).
 
-On return, the server exchanges the authorization code and makes Google's required initial `devices.list` call. It locks the app to the configured matching thermostat, or to the sole authorized thermostat when no device ID was supplied. If multiple thermostats are returned without a configured choice, setup stops: select a single thermostat in Google's consent flow or configure its ID, then reconnect. There is no neighbor-facing device picker and no arbitrary device proxy.
+On return, the server exchanges the authorization code and makes Google's required initial `devices.list` call. It locks the app to the configured matching thermostat, or to the sole authorized thermostat when no device ID was supplied. If multiple thermostats are returned without a configured choice, setup stops: select a single thermostat in Google's consent flow or configure its ID, then reconnect. There is no guest-facing device picker and no arbitrary device proxy.
 
-The refresh token is encrypted on the server; no Google token is sent to the neighbor's browser. The callback is single-use and tied to the owner's linking session. Google's initial list call is required to complete authorization. [Google authorization completion](https://developers.google.com/nest/device-access/authorize#make_a_device_list_call).
+The refresh token is encrypted on the server; no Google token is sent to the guest's browser. The callback is single-use and tied to the owner's linking session. Google's initial list call is required to complete authorization. [Google authorization completion](https://developers.google.com/nest/device-access/authorize#make_a_device_list_call).
 
 ## 6. Verify before sharing
 
@@ -85,7 +85,7 @@ The refresh token is encrypted on the server; no Google token is sent to the nei
 3. Review the app's temperature bounds for your home and equipment.
 4. Make one small, appropriate change while you can check the physical thermostat. Wait for read-back confirmation; an accepted API request alone is not proof the hardware applied it.
 5. Verify Off/Eco/fan only if supported and appropriate. Do not interrupt heating/cooling just to exercise every button.
-6. Create and share a separate neighbor key. Revoke a temporary test key and verify its session no longer works.
+6. Create and share a separate guest key. Revoke a temporary test key and verify its session no longer works.
 
 Live account linking and hardware behavior have **not** been validated merely because this repository's offline tests pass.
 

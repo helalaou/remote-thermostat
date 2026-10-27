@@ -179,9 +179,41 @@ export function createApp({
       accessKeys: store.listKeys(),
       setupMessage: googleConfigured(config)
         ? 'Ready for the owner to authorize one thermostat.'
-        : 'Google connection is optional until you are ready. Follow docs/google-setup.md to configure the server.',
+        : 'Not configured. See docs/google-setup.md.',
     }),
   );
+  app.post('/api/owner/keys', async (c) => {
+    const body = (await c.req.json()) as Record<string, unknown>;
+    if (
+      !body ||
+      typeof body !== 'object' ||
+      typeof body.label !== 'string' ||
+      !body.label.trim() ||
+      body.label.length > 80 ||
+      !Number.isInteger(body.days) ||
+      (body.days as number) < 1 ||
+      (body.days as number) > 365 ||
+      Object.keys(body).length !== 2
+    )
+      return c.json({ message: 'Give the key a name and an expiry of 1–365 days.' }, 400);
+    store.reserve('key-create', [{ max: 10, windowMs: 60_000 }]);
+    const created = store.createKey(
+      'neighbor',
+      body.label,
+      Date.now() + (body.days as number) * 86_400_000,
+    );
+    store.audit(c.get('session')!.keyId, 'key-create', created.id);
+    return c.json(created, 201);
+  });
+  app.delete('/api/owner/keys/:id', (c) => {
+    const id = c.req.param('id');
+    // Owner keys are only revoked from the local CLI, so the app can't lock its owner out.
+    if (!store.listKeys().some((key) => key.id === id && key.role === 'neighbor'))
+      return c.json({ message: 'Key not found.' }, 404);
+    store.revokeKey(id);
+    store.audit(c.get('session')!.keyId, 'key-revoke', id);
+    return c.json({ ok: true });
+  });
   app.post('/api/owner/google/connect', async (c) => {
     if (!googleConfigured(config))
       return c.json(

@@ -15,7 +15,7 @@ Offline tests are necessary, not sufficient. Complete this checklist in your own
 - [ ] HTTPS is valid and `APP_ORIGIN` matches the exact browser origin.
 - [ ] Port 3000 is not directly exposed to the internet.
 - [ ] Owner key is stored privately; no default/demo credentials exist.
-- [ ] Confirm a neighbor cannot access owner settings or Google linking.
+- [ ] Confirm a guest cannot access owner settings or Google linking.
 - [ ] Confirm a revoked/expired key loses access from an already-open session.
 - [ ] Test private backup and recovery of the data volume and encryption key.
 - [ ] Check proxy logs do not store tokens, cookies, bodies, or OAuth callback query strings.
@@ -29,6 +29,6 @@ Offline tests are necessary, not sufficient. Complete this checklist in your own
 - [ ] Make one appropriate small change and verify its read-back/physical result.
 - [ ] Confirm stale/offline behavior and recovery without repeated command submission.
 - [ ] Check OAuth refresh after the initial access token expires, and after seven days if applicable to your consent setup.
-- [ ] Keep manual/official thermostat access available, and explain it to the neighbor.
+- [ ] Keep manual/official thermostat access available, and explain it to the guest.
 
 Do not record a hardware test as passed until it was actually performed. Do not test disruptive Off/Eco changes merely for completeness when conditions make that unsafe or inconvenient.

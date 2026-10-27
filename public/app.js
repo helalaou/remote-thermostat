@@ -1,8 +1,7 @@
 const $ = (id) => document.getElementById(id);
 const DEMO_ONLY = document.querySelector('meta[name="demo-only"]')?.content === 'true';
 const POLL_MS = 30_000;
-const modeNames = { HEAT: 'Heat', COOL: 'Cool', HEATCOOL: 'Heat · Cool', OFF: 'Off' };
-const modeIcons = { HEAT: '☀', COOL: '❄', HEATCOOL: '↔', OFF: '⏻' };
+const modeNames = { HEAT: 'Heat', COOL: 'Cool', HEATCOOL: 'Heat/Cool', OFF: 'Off' };
 const fallbackLimits = { minCelsius: 10, maxCelsius: 30, minRangeGapCelsius: 1.5 };
 let unit = 'C';
 try {
@@ -81,7 +80,12 @@ function transitionView() {
   dismissConfirmation();
   return state.generation;
 }
+function clearCreatedKey() {
+  $('key-token').value = '';
+  $('key-created').hidden = true;
+}
 function lockSession() {
+  clearCreatedKey();
   state.session = { authenticated: false, configured: state.session.configured };
   state.connected = false;
   state.snapshot = null;
@@ -190,12 +194,12 @@ function render() {
   text(
     'session-label',
     state.demo
-      ? 'Local demo'
+      ? 'Demo'
       : state.session.authenticated
         ? state.session.role === 'owner'
-          ? 'Owner access'
-          : 'Neighbor access'
-        : 'Private control',
+          ? 'Owner'
+          : state.session.label || 'Guest'
+        : '',
   );
   $('login-open').hidden = state.session.authenticated || DEMO_ONLY;
   $('logout').hidden = !state.session.authenticated || state.demo;
@@ -206,20 +210,13 @@ function render() {
   $('confirm-apply').disabled = state.busy || state.loading;
   $('demo-banner').hidden = !state.demo;
   $('exit-demo').hidden = DEMO_ONLY;
-  $('start-demo').hidden = state.demo;
-  document.querySelector('.demo-footnote').hidden = state.demo;
-  text(
-    'info-description',
-    state.demo
-      ? 'You are exploring sample readings in this browser. No thermostat is connected and no changes leave this demo.'
-      : 'This app controls one thermostat only. Your other home devices stay yours.',
-  );
+  $('start-demo').hidden = state.demo || state.session.authenticated || DEMO_ONLY;
   $('unit-c').setAttribute('aria-pressed', String(unit === 'C'));
   $('unit-f').setAttribute('aria-pressed', String(unit === 'F'));
   const badge = state.demo
     ? 'Demo'
-    : state.stale
-      ? 'Stale reading'
+    : state.stale && state.connected
+      ? 'Stale'
       : online
         ? 'Connected'
         : state.connected && s
@@ -229,7 +226,7 @@ function render() {
   $('connection-badge').dataset.state =
     state.demo || (online && !state.stale)
       ? 'online'
-      : state.stale || (state.connected && s)
+      : state.connected && (state.stale || s)
         ? 'offline'
         : 'disconnected';
   $('dial').dataset.mode =
@@ -238,35 +235,35 @@ function render() {
   $('target-unit').hidden = eco || s?.mode === 'OFF';
   if (!state.connected || !s) {
     text('target-value', '—');
-    text('dial-label', 'Target temperature');
-    text('dial-description', 'Waiting for connection');
+    text('dial-label', 'Target');
+    text('dial-description', '');
   } else if (eco) {
     text('target-value', 'Eco');
-    text('dial-label', 'Energy-saving mode');
-    text('dial-description', 'Using your Eco temperatures');
+    text('dial-label', 'Eco');
+    text('dial-description', '');
   } else if (s.mode === 'OFF') {
     text('target-value', '—');
-    text('dial-label', 'System is off');
-    text('dial-description', 'Choose a mode to adjust');
+    text('dial-label', 'Off');
+    text('dial-description', '');
   } else if (hasRange) {
     text(
       'target-value',
       `${numberText(state.draft?.heatCelsius)}–${numberText(state.draft?.coolCelsius)}`,
     );
-    text('dial-label', 'Comfort range');
-    text('dial-description', state.dirty ? 'Not applied yet' : 'Heat · Cool');
+    text('dial-label', 'Range');
+    text('dial-description', state.dirty ? 'Not applied' : '');
   } else {
     text('target-value', numberText(current));
-    text('dial-label', s.mode === 'COOL' ? 'Cool to' : 'Heat to');
+    text('dial-label', s.mode === 'COOL' ? 'Cooling to' : 'Heating to');
     text(
       'dial-description',
       state.dirty
-        ? 'Not applied yet'
+        ? 'Not applied'
         : s.hvacStatus === 'HEATING'
-          ? 'Heating now'
+          ? 'Heating'
           : s.hvacStatus === 'COOLING'
-            ? 'Cooling now'
-            : 'Target temperature',
+            ? 'Cooling'
+            : '',
     );
   }
   if (finite(current)) {
@@ -288,12 +285,8 @@ function render() {
   text(
     'stepper-hint',
     editable
-      ? `${temperatureText(state.limits.minCelsius)} – ${temperatureText(state.limits.maxCelsius)}`
-      : eco
-        ? 'Eco is active'
-        : s?.mode === 'OFF'
-          ? 'System is off'
-          : 'Connect to adjust',
+      ? `${temperatureText(state.limits.minCelsius)}–${temperatureText(state.limits.maxCelsius)}`
+      : '',
   );
   for (const [id, field] of [
     ['range-heat', 'heatCelsius'],
@@ -313,28 +306,17 @@ function render() {
     node.textContent = `°${unit}`;
   });
   $('apply-temperature').disabled = !editable || !state.dirty;
-  text(
-    'apply-temperature',
-    state.busy ? 'Sending…' : state.demo ? 'Apply in demo' : 'Apply temperature',
-  );
-  text(
-    'target-help',
-    state.stale
-      ? 'Readings are stale. Refresh before making changes.'
-      : eco
-        ? 'Turn Eco off explicitly before changing the target.'
-        : 'No changes are sent until you apply.',
-  );
+  text('apply-temperature', state.busy ? 'Sending…' : 'Apply');
   text('ambient-value', temperatureText(s?.ambientCelsius));
   text('humidity-value', finite(s?.humidityPercent) ? `${Math.round(s.humidityPercent)}%` : '—');
   const synced = timeLabel(state.checkedAt || s?.observedAt);
   text(
     'sync-status',
     state.demo
-      ? 'Sample readings · browser only'
+      ? 'Sample data'
       : s
-        ? `${state.stale ? 'Last known' : 'Checked'}${synced ? ` at ${synced}` : ''} · auto-refresh 30s`
-        : 'No live readings yet',
+        ? `${state.stale ? 'Last reading' : 'Updated'}${synced ? ` ${synced}` : ''}`
+        : '',
   );
   $('refresh').disabled = state.loading || state.busy || (!live && !state.demo);
   const modes =
@@ -345,44 +327,34 @@ function render() {
   for (const mode of modes) {
     const button = document.createElement('button');
     button.type = 'button';
-    button.textContent = `${modeIcons[mode]}  ${modeNames[mode]}`;
+    button.textContent = modeNames[mode];
+    button.dataset.mode = mode;
     button.setAttribute('aria-pressed', String(s?.mode === mode));
     button.disabled = !canControl() || s?.mode === mode;
     button.addEventListener('click', () => askCommand({ type: 'mode', mode }));
     $('mode-buttons').append(button);
   }
-  text(
-    'mode-help',
-    !state.connected
-      ? 'Available controls appear after connection.'
-      : eco
-        ? 'Eco is active. Mode changes do not silently turn Eco off.'
-        : 'Choose how the thermostat keeps your space comfortable.',
-  );
   const hasEco = Boolean(
     s?.availableEcoModes?.includes('MANUAL_ECO') && s.availableEcoModes.includes('OFF'),
   );
   $('eco-controls').hidden = !hasEco;
   $('eco-toggle').disabled = !canControl();
   $('eco-toggle').setAttribute('aria-pressed', String(eco));
-  $('eco-toggle').setAttribute('aria-label', eco ? 'Turn Eco mode off' : 'Enable Eco mode');
-  text(
-    'eco-description',
-    eco ? 'On · target adjustments are paused.' : 'Use the thermostat’s Eco temperatures.',
-  );
+  $('eco-toggle').setAttribute('aria-label', eco ? 'Turn Eco off' : 'Turn Eco on');
+  text('eco-description', eco ? 'on' : '');
   $('eco-readings').hidden = !eco;
   text(
     'eco-readings',
-    `Eco heat: ${temperatureText(s?.ecoHeatCelsius)} · Eco cool: ${temperatureText(s?.ecoCoolCelsius)}. Edit these limits in the Nest app.`,
+    `Eco range ${temperatureText(s?.ecoHeatCelsius)}–${temperatureText(s?.ecoCoolCelsius)}`,
   );
   $('fan-card').hidden = !s?.hasFan;
   const fanRunning = s?.fanTimerMode === 'ON';
   text(
     'fan-description',
-    fanRunning
-      ? `Fan timer is on${s.fanTimerTimeout ? ` until ${timeLabel(s.fanTimerTimeout)}` : ''}.`
-      : 'Circulate air without changing your target.',
+    fanRunning ? `Running${s.fanTimerTimeout ? ` until ${timeLabel(s.fanTimerTimeout)}` : ''}` : '',
   );
+  $('fan-start').hidden = fanRunning;
+  $('fan-duration').hidden = fanRunning;
   $('fan-start').disabled = !canControl();
   $('fan-duration').disabled = !canControl();
   $('fan-stop').hidden = !fanRunning;
@@ -404,7 +376,7 @@ function scheduleRefresh() {
 async function refreshStatus(manual = false) {
   if (state.loading || state.busy) return;
   if (state.demo) {
-    notice('Demo readings are local samples. No thermostat was contacted.');
+    notice('Demo data.');
     return;
   }
   if (!state.session.authenticated) return;
@@ -425,27 +397,17 @@ async function refreshStatus(manual = false) {
       if (!state.dirty || draftMode !== state.snapshot?.mode) resetDraft();
     }
     if (state.draft) state.draft.mode = state.snapshot?.mode;
-    if (result.message) notice(result.message, state.stale ? 'error' : 'info');
-    else if (!state.connected)
-      notice('Not connected yet. The owner can complete Google Nest setup when ready.');
-    else if (state.stale)
-      notice(
-        'Showing the last known reading. Refresh must succeed before you can make changes.',
-        'error',
-      );
-    else if (state.snapshot?.connection !== 'ONLINE')
-      notice('The thermostat is offline. Controls are paused until it reconnects.', 'error');
-    else if (manual) notice('Thermostat status refreshed.', 'success');
-    else if (state.lastNotice?.tone !== 'success')
-      notice('Connected to one thermostat. Changes are sent only when you confirm them.');
+    if (result.message) notice(result.message, state.stale && state.connected ? 'error' : 'info');
+    else if (!state.connected) notice('Google Nest is not connected.');
+    else if (state.stale) notice('Showing last reading. Refresh before making changes.', 'error');
+    else if (state.snapshot?.connection !== 'ONLINE') notice('Thermostat is offline.', 'error');
+    else if (manual) notice('Refreshed.', 'success');
+    else if (state.lastNotice?.tone !== 'success') notice('');
   } catch (error) {
     if (generation !== state.generation) return;
     if (error.status === 401) lockSession();
     state.stale = Boolean(state.snapshot);
-    notice(
-      `${errorMessage(error)}${state.snapshot ? ' Showing the last known reading.' : ''}`,
-      'error',
-    );
+    notice(`${errorMessage(error)}${state.snapshot ? ' Showing last reading.' : ''}`, 'error');
   } finally {
     if (generation === state.generation) {
       state.loading = false;
@@ -463,8 +425,8 @@ async function refreshSession() {
     if (!state.session.authenticated)
       notice(
         state.session.configured
-          ? 'Sign in with your private access key to view and control the thermostat.'
-          : 'Not connected yet. You can explore the local demo while the owner finishes setup.',
+          ? 'Sign in with your access key.'
+          : 'No owner key yet. Run: npm run admin -- create-owner',
       );
     render();
     if (state.session.authenticated) {
@@ -473,7 +435,7 @@ async function refreshSession() {
     }
   } catch (error) {
     if (generation !== state.generation) return;
-    notice(`${errorMessage(error)} The local demo still works.`, 'error');
+    notice(errorMessage(error), 'error');
     render();
   }
   if (generation === state.generation) scheduleRefresh();
@@ -486,10 +448,11 @@ async function refreshOwner() {
     state.owner = owner;
     text(
       'owner-description',
-      state.owner.setupMessage ||
-        (state.owner.googleConnected
-          ? 'Google Nest is connected. Only this thermostat is available to neighbors.'
-          : 'Google Nest is not connected. Finish the setup steps in the README when you are ready.'),
+      state.owner.googleConnected
+        ? 'Connected.'
+        : state.owner.googleConfigured
+          ? 'Not connected.'
+          : 'Not configured. See docs/google-setup.md.',
     );
     text(
       'google-connect',
@@ -500,16 +463,42 @@ async function refreshOwner() {
       const row = document.createElement('div');
       row.className = 'access-row';
       const name = document.createElement('span');
-      name.textContent = entry.label || 'Access key';
-      const role = document.createElement('span');
-      role.textContent = entry.role === 'owner' ? 'Owner' : 'Neighbor';
-      row.append(name, role);
+      name.textContent = entry.label || 'Key';
+      const detail = document.createElement('span');
+      detail.className = 'muted small';
+      detail.textContent =
+        entry.role === 'owner'
+          ? 'Owner'
+          : entry.expiresAt
+            ? `until ${new Date(entry.expiresAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}`
+            : 'Guest';
+      row.append(name, detail);
+      if (entry.role !== 'owner') {
+        const revoke = document.createElement('button');
+        revoke.type = 'button';
+        revoke.textContent = 'Revoke';
+        revoke.addEventListener('click', () => revokeKey(entry));
+        row.append(revoke);
+      }
       $('access-list').append(row);
     }
     render();
   } catch (error) {
     if (generation === state.generation) text('owner-description', errorMessage(error));
   }
+}
+async function revokeKey(entry) {
+  if (state.busy || !window.confirm(`Revoke access for ${entry.label}?`)) return;
+  try {
+    await api(`/api/owner/keys/${encodeURIComponent(entry.id)}`, {
+      method: 'DELETE',
+      body: '{}',
+    });
+    notice(`Revoked ${entry.label}.`, 'success');
+  } catch (error) {
+    notice(errorMessage(error), 'error');
+  }
+  await refreshOwner();
 }
 function setUnit(next) {
   unit = next;
@@ -536,25 +525,23 @@ function adjustTemperature(direction) {
 function commandDescription(command) {
   switch (command.type) {
     case 'heat':
-      return `Set the heating target to ${temperatureText(command.heatCelsius)}?`;
+      return `Heat to ${temperatureText(command.heatCelsius)}?`;
     case 'cool':
-      return `Set the cooling target to ${temperatureText(command.coolCelsius)}?`;
+      return `Cool to ${temperatureText(command.coolCelsius)}?`;
     case 'range':
-      return `Set the comfort range to ${temperatureText(command.heatCelsius)}–${temperatureText(command.coolCelsius)}?`;
+      return `Keep between ${temperatureText(command.heatCelsius)} and ${temperatureText(command.coolCelsius)}?`;
     case 'mode':
       return command.mode === 'OFF'
-        ? 'Turn the thermostat off? Normal heating and cooling will stop. Device safety features are managed by Nest.'
-        : `Switch the thermostat to ${modeNames[command.mode]}? This does not automatically change Eco mode or set a new target.`;
+        ? 'Turn the thermostat off?'
+        : `Switch to ${modeNames[command.mode]}?`;
     case 'eco':
-      return command.mode === 'MANUAL_ECO'
-        ? 'Turn Eco mode on? The thermostat will use its existing Eco temperatures instead of the normal target.'
-        : 'Turn Eco mode off? Nest will resume the last standard mode and its previous target temperatures.';
+      return command.mode === 'MANUAL_ECO' ? 'Turn Eco on?' : 'Turn Eco off?';
     case 'fan':
       return command.timerMode === 'OFF'
-        ? 'Stop the fan timer? Heating or cooling may still run the fan as needed.'
-        : `Run the fan timer for ${command.durationSeconds / 60} minutes?`;
+        ? 'Stop the fan?'
+        : `Run the fan for ${$('fan-duration').selectedOptions[0]?.textContent || `${command.durationSeconds / 60} min`}?`;
     default:
-      return 'Apply this thermostat change?';
+      return 'Apply this change?';
   }
 }
 function askCommand(command) {
@@ -569,7 +556,7 @@ function askCommand(command) {
       )
     ) {
       notice(
-        `Choose a target between ${temperatureText(state.limits.minCelsius)} and ${temperatureText(state.limits.maxCelsius)}.`,
+        `Pick ${temperatureText(state.limits.minCelsius)}–${temperatureText(state.limits.maxCelsius)}.`,
         'error',
       );
       return;
@@ -579,7 +566,7 @@ function askCommand(command) {
       command.coolCelsius - command.heatCelsius < state.limits.minRangeGapCelsius - 0.001
     ) {
       notice(
-        `Keep at least ${unit === 'F' ? round((state.limits.minRangeGapCelsius * 9) / 5) : state.limits.minRangeGapCelsius}°${unit} between heating and cooling targets.`,
+        `Heat and cool need ${unit === 'F' ? round((state.limits.minRangeGapCelsius * 9) / 5) : state.limits.minRangeGapCelsius}°${unit} between them.`,
         'error',
       );
       return;
@@ -593,15 +580,9 @@ function askCommand(command) {
     generation: state.generation,
   };
   state.confirmTimer = setTimeout(() => validateConfirmation(), 30_050);
-  text('confirm-title', state.demo ? 'Try this in the demo?' : 'Change the thermostat?');
+  text('confirm-title', state.demo ? 'Confirm (demo)' : 'Confirm');
   text('confirm-description', commandDescription(command));
-  text(
-    'confirm-warning',
-    state.demo
-      ? 'This is a local demo. No real thermostat will change.'
-      : 'This changes the real thermostat. Other people or integrations can change it again.',
-  );
-  text('confirm-apply', state.demo ? 'Apply in demo' : 'Confirm change');
+  text('confirm-apply', 'Confirm');
   $('confirm-dialog').showModal();
   $('confirm-cancel').focus();
 }
@@ -626,7 +607,7 @@ function demoApply(command) {
   state.checkedAt = s.observedAt;
   resetDraft();
   if (state.draft) state.draft.mode = s.mode;
-  notice('Updated in this local demo only. Your thermostat has not changed.', 'success');
+  notice('Done.', 'success');
 }
 async function executePendingCommand() {
   validateConfirmation();
@@ -641,7 +622,7 @@ async function executePendingCommand() {
   }
   state.busy = true;
   render();
-  notice('Sending the change. Waiting for a fresh reading before confirming…');
+  notice('Sending…');
   try {
     const result = await api('/api/commands', {
       method: 'POST',
@@ -656,20 +637,16 @@ async function executePendingCommand() {
     if (result.confirmed) {
       resetDraft();
       if (state.draft) state.draft.mode = state.snapshot?.mode;
-      notice(result.message || 'The thermostat reports the requested change.', 'success');
+      notice(result.message || 'Done.', 'success');
     } else {
       state.stale = true;
-      notice(
-        result.message ||
-          'The command was accepted, but a matching thermostat reading has not been confirmed. Refresh before trying again.',
-        'error',
-      );
+      notice(result.message || 'Sent, but not confirmed yet. Refresh to check.', 'error');
     }
   } catch (error) {
     if (generation !== state.generation) return;
     if (error.status === 401) lockSession();
     state.stale = Boolean(state.snapshot);
-    notice(`${errorMessage(error)} Refresh to verify the thermostat before trying again.`, 'error');
+    notice(`${errorMessage(error)} Refresh to check before retrying.`, 'error');
   } finally {
     if (generation === state.generation) {
       state.busy = false;
@@ -709,7 +686,7 @@ function enterDemo() {
   state.checkedAt = state.snapshot.observedAt;
   resetDraft();
   state.draft.mode = 'HEAT';
-  notice('Explore all supported controls with sample data. Every change stays in this browser.');
+  notice('');
   render();
 }
 async function exitDemo() {
@@ -721,7 +698,7 @@ async function exitDemo() {
   state.stale = false;
   resetDraft();
   render();
-  notice('Returning to your connection…');
+  notice('');
   await refreshSession();
 }
 $('unit-c').addEventListener('click', () => setUnit('C'));
@@ -815,10 +792,11 @@ $('logout').addEventListener('click', async () => {
     state.connected = false;
     state.snapshot = null;
     state.owner = null;
+    clearCreatedKey();
     resetDraft();
     clearTimeout(state.pollTimer);
     render();
-    notice('Signed out. Controls are locked.');
+    notice('Signed out.');
   } catch (error) {
     if (generation === state.generation) notice(errorMessage(error), 'error');
   } finally {
@@ -855,6 +833,37 @@ $('google-connect').addEventListener('click', async () => {
     }
   }
 });
+$('key-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const label = $('key-label').value.trim();
+  if (!label || state.busy || state.session.role !== 'owner') return;
+  $('key-create').disabled = true;
+  try {
+    const created = await api('/api/owner/keys', {
+      method: 'POST',
+      body: JSON.stringify({ label, days: Number($('key-days').value) }),
+    });
+    $('key-label').value = '';
+    $('key-token').value = created.token;
+    $('key-created').hidden = false;
+    $('key-token').select();
+    await refreshOwner();
+  } catch (error) {
+    notice(errorMessage(error), 'error');
+  } finally {
+    $('key-create').disabled = false;
+  }
+});
+$('key-copy').addEventListener('click', async () => {
+  $('key-token').select();
+  try {
+    await navigator.clipboard.writeText($('key-token').value);
+  } catch {
+    document.execCommand?.('copy');
+  }
+  text('key-copy', 'Copied');
+  setTimeout(() => text('key-copy', 'Copy'), 1500);
+});
 document.addEventListener('visibilitychange', () => {
   clearTimeout(state.pollTimer);
   if (!document.hidden && state.session.authenticated && !state.demo)
@@ -863,6 +872,7 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('pagehide', () => {
   clearTimeout(state.pollTimer);
   $('access-key').value = '';
+  clearCreatedKey();
 });
 render();
 if (DEMO_ONLY) enterDemo();

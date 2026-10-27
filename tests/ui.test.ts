@@ -130,7 +130,7 @@ test('available controls come from the reported device capabilities', async (t) 
   const buttons = [...app.el('mode-buttons').querySelectorAll('button')].map(
     (button) => button.textContent,
   );
-  assert.deepEqual(buttons, ['☀  Heat', '⏻  Off']);
+  assert.deepEqual(buttons, ['Heat', 'Off']);
   assert.equal(app.el<HTMLElement>('fan-card').hidden, true);
   assert.equal(app.el<HTMLElement>('eco-controls').hidden, true);
   assert.equal(app.el<HTMLButtonElement>('temperature-up').disabled, false);
@@ -174,7 +174,7 @@ test('late status result cannot overwrite a newer local demo', async (t) => {
   await running;
   assert.equal(app.ui.state.demo, true);
   assert.equal(app.ui.state.snapshot.heatCelsius, 21);
-  assert.equal(app.el('session-label').textContent, 'Local demo');
+  assert.equal(app.el('session-label').textContent, 'Demo');
   assert.equal(app.ui.state.loading, false);
 });
 
