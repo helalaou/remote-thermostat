@@ -84,7 +84,7 @@ The refresh token is encrypted on the server; no Google token is sent to the gue
 2. Compare the displayed current mode and temperature with the physical thermostat or official app.
 3. Review the app's temperature bounds for your home and equipment.
 4. Make one small, appropriate change while you can check the physical thermostat. Wait for read-back confirmation; an accepted API request alone is not proof the hardware applied it.
-5. Verify Off/Eco/fan only if supported and appropriate. Do not interrupt heating/cooling just to exercise every button.
+5. Verify Off/Eco only if supported and appropriate. Do not interrupt heating/cooling just to exercise every button.
 6. Create and share a separate guest key. Revoke a temporary test key and verify its session no longer works.
 
 Live account linking and hardware behavior have **not** been validated merely because this repository's offline tests pass.
