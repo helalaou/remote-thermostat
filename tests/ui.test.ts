@@ -13,8 +13,6 @@ const snapshot = (overrides: Record<string, unknown> = {}) => ({
   availableModes: ['HEAT', 'OFF'],
   ecoMode: 'OFF',
   availableEcoModes: [],
-  fanTimerMode: 'OFF',
-  hasFan: false,
   hasSetpoint: true,
   ambientCelsius: 19.5,
   humidityPercent: 42,
@@ -131,7 +129,6 @@ test('available controls come from the reported device capabilities', async (t) 
     (button) => button.textContent,
   );
   assert.deepEqual(buttons, ['Heat', 'Off']);
-  assert.equal(app.el<HTMLElement>('fan-card').hidden, true);
   assert.equal(app.el<HTMLElement>('eco-controls').hidden, true);
   assert.equal(app.el<HTMLButtonElement>('temperature-up').disabled, false);
 });
@@ -306,4 +303,42 @@ test('automatic refresh runs every 30 seconds only while visible, with no overla
   await settle();
   assert.equal(app.calls.filter((path) => path === '/api/thermostat').length, reads + 1);
   assert.equal([...timers.values()].filter((item) => item.delay === 30_000).length, 1);
+});
+test('settings hide unwanted modes and Eco, keep the active mode, and switch theme', async (t) => {
+  const app = createUI(normalHandler);
+  t.after(app.close);
+  await settle();
+  const modeButtons = () =>
+    [...app.el('mode-buttons').querySelectorAll('button')].map((button) => button.textContent);
+  app.el<HTMLButtonElement>('settings-open').click();
+  assert.equal(app.el<HTMLDialogElement>('settings-dialog').open, true);
+  for (const mode of ['HEAT', 'OFF']) {
+    const box = app.window.document.querySelector<HTMLInputElement>(
+      `[data-mode-choice="${mode}"]`,
+    )!;
+    box.checked = false;
+    box.dispatchEvent(new app.window.Event('change'));
+  }
+  // HEAT is the current mode, so it stays visible; OFF is hidden.
+  assert.deepEqual(modeButtons(), ['Heat']);
+  app.window.document.querySelector<HTMLButtonElement>('[data-theme-choice="dark"]')!.click();
+  assert.equal(app.window.document.documentElement.dataset.theme, 'dark');
+  app.window.document.querySelector<HTMLButtonElement>('[data-theme-choice="system"]')!.click();
+  assert.equal(app.window.document.documentElement.dataset.theme, undefined);
+  const saved = JSON.parse(app.window.localStorage.getItem('remote-thermostat-settings')!);
+  assert.deepEqual(saved.modes, ['COOL', 'HEATCOOL']);
+});
+test('demo hides Eco when turned off in settings unless Eco is active', async (t) => {
+  const app = createUI(normalHandler);
+  t.after(app.close);
+  await settle();
+  app.ui.enterDemo();
+  assert.equal(app.el<HTMLElement>('eco-controls').hidden, false);
+  const eco = app.el<HTMLInputElement>('show-eco');
+  eco.checked = false;
+  eco.dispatchEvent(new app.window.Event('change'));
+  assert.equal(app.el<HTMLElement>('eco-controls').hidden, true);
+  app.ui.state.snapshot.ecoMode = 'MANUAL_ECO';
+  app.ui.render();
+  assert.equal(app.el<HTMLElement>('eco-controls').hidden, false);
 });

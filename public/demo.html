@@ -8,18 +8,23 @@
     <meta name="demo-only" content="true" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/styles.css" />
+    <script src="/theme.js"></script>
     <script src="/app.js" type="module"></script>
   </head>
   <body>
     <header class="top">
       <h1>Remote Thermostat</h1>
       <span id="session-label" class="session-label"></span>
-      <div class="unit-control" role="group" aria-label="Units">
-        <button id="unit-c" type="button" aria-pressed="true">°C</button
-        ><button id="unit-f" type="button" aria-pressed="false">°F</button>
-      </div>
       <button id="login-open" class="link" type="button">Sign in</button>
       <button id="logout" class="link" type="button" hidden>Sign out</button>
+      <button id="settings-open" class="gear" type="button" aria-label="Settings">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="3" />
+          <path
+            d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"
+          />
+        </svg>
+      </button>
     </header>
 
     <main id="main" tabindex="-1">
@@ -105,24 +110,6 @@
         <p id="eco-readings" class="muted small" hidden></p>
       </section>
 
-      <section id="fan-card" class="card" aria-labelledby="fan-title" hidden>
-        <h2 id="fan-title">Fan</h2>
-        <p id="fan-description" class="muted small"></p>
-        <div class="inline">
-          <label class="sr-only" for="fan-duration">Duration</label
-          ><select id="fan-duration">
-            <option value="900">15 min</option>
-            <option value="1800">30 min</option>
-            <option value="3600">1 hour</option>
-            <option value="7200">2 hours</option>
-            <option value="14400">4 hours</option>
-            <option value="28800">8 hours</option>
-            <option value="43200">12 hours</option></select
-          ><button id="fan-start" type="button">Run</button
-          ><button id="fan-stop" type="button" hidden>Stop</button>
-        </div>
-      </section>
-
       <section id="owner-card" class="card" aria-labelledby="owner-title" hidden>
         <h2 id="owner-title">Access</h2>
         <div id="access-list" class="access-list"></div>
@@ -155,6 +142,40 @@
       </section>
     </main>
 
+    <dialog id="settings-dialog" aria-labelledby="settings-title">
+      <div>
+        <div class="row">
+          <h2 id="settings-title">Settings</h2>
+          <button id="settings-close" class="close" type="button" aria-label="Close">×</button>
+        </div>
+        <div class="setting">
+          <span>Theme</span>
+          <div id="theme-control" class="unit-control" role="group" aria-label="Theme">
+            <button type="button" data-theme-choice="system">Auto</button
+            ><button type="button" data-theme-choice="light">Light</button
+            ><button type="button" data-theme-choice="dark">Dark</button>
+          </div>
+        </div>
+        <div class="setting">
+          <span>Units</span>
+          <div class="unit-control" role="group" aria-label="Units">
+            <button id="unit-c" type="button" aria-pressed="true">°C</button
+            ><button id="unit-f" type="button" aria-pressed="false">°F</button>
+          </div>
+        </div>
+        <fieldset class="setting-group">
+          <legend>Modes to show</legend>
+          <label><input type="checkbox" data-mode-choice="HEAT" /> Heat</label>
+          <label><input type="checkbox" data-mode-choice="COOL" /> Cool</label>
+          <label><input type="checkbox" data-mode-choice="HEATCOOL" /> Heat/Cool</label>
+          <label><input type="checkbox" data-mode-choice="OFF" /> Off</label>
+        </fieldset>
+        <label class="setting">
+          <span>Show Eco</span>
+          <input id="show-eco" type="checkbox" />
+        </label>
+      </div>
+    </dialog>
     <dialog id="login-dialog" aria-labelledby="login-title">
       <form id="login-form">
         <div class="row">

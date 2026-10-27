@@ -263,6 +263,7 @@ export function createApp({
   app.get('/app.js', serveStatic({ path: `${staticRoot}/app.js` }));
   app.get('/styles.css', serveStatic({ path: `${staticRoot}/styles.css` }));
   app.get('/favicon.svg', serveStatic({ path: `${staticRoot}/favicon.svg` }));
+  app.get('/theme.js', serveStatic({ path: `${staticRoot}/theme.js` }));
   app.notFound((c) => c.json({ message: 'Not found.' }, 404));
   return app;
 }

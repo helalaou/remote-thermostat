@@ -16,9 +16,6 @@ export interface ThermostatSnapshot {
   availableEcoModes: EcoMode[];
   hasEco: boolean;
   hasSetpoint: boolean;
-  hasFan: boolean;
-  fanTimerMode: 'ON' | 'OFF' | null;
-  fanTimerTimeout: string | null;
   ambientCelsius: number | null;
   humidityPercent: number | null;
   heatCelsius: number | null;
@@ -51,9 +48,7 @@ export type ThermostatAction =
   | { type: 'cool'; coolCelsius: number }
   | { type: 'range'; heatCelsius: number; coolCelsius: number }
   | { type: 'mode'; mode: ThermostatMode }
-  | { type: 'eco'; mode: EcoMode }
-  | { type: 'fan'; timerMode: 'ON'; durationSeconds: number }
-  | { type: 'fan'; timerMode: 'OFF' };
+  | { type: 'eco'; mode: EcoMode };
 
 export type SdmCommand =
   | {
@@ -69,11 +64,7 @@ export type SdmCommand =
       params: { heatCelsius: number; coolCelsius: number };
     }
   | { command: 'sdm.devices.commands.ThermostatMode.SetMode'; params: { mode: ThermostatMode } }
-  | { command: 'sdm.devices.commands.ThermostatEco.SetMode'; params: { mode: EcoMode } }
-  | {
-      command: 'sdm.devices.commands.Fan.SetTimer';
-      params: { timerMode: 'ON'; duration: string } | { timerMode: 'OFF' };
-    };
+  | { command: 'sdm.devices.commands.ThermostatEco.SetMode'; params: { mode: EcoMode } };
 
 export class CommandValidationError extends Error {
   readonly code: string;
@@ -136,10 +127,8 @@ export function parseThermostat(
   const trait = (name: string) => object(traits[traitPrefix + name]);
   const mode = trait('ThermostatMode');
   const eco = trait('ThermostatEco');
-  const fan = trait('Fan');
   const setpoint = trait('ThermostatTemperatureSetpoint');
   const humidity = finite(trait('Humidity')?.ambientHumidityPercent);
-  const timeout = fan?.timerTimeout;
   return {
     connection: member(trait('Connectivity')?.status, ['ONLINE', 'OFFLINE']) ?? 'UNKNOWN',
     mode: member(mode?.mode, THERMOSTAT_MODES),
@@ -148,10 +137,6 @@ export function parseThermostat(
     availableEcoModes: members(eco?.availableModes, ECO_MODES),
     hasEco: eco !== null,
     hasSetpoint: setpoint !== null,
-    hasFan: fan !== null,
-    fanTimerMode: member(fan?.timerMode, ['ON', 'OFF']),
-    fanTimerTimeout:
-      typeof timeout === 'string' && Number.isFinite(Date.parse(timeout)) ? timeout : null,
     ambientCelsius: finite(trait('Temperature')?.ambientTemperatureCelsius),
     humidityPercent: humidity !== null && humidity >= 0 && humidity <= 100 ? humidity : null,
     heatCelsius: finite(setpoint?.heatCelsius),
@@ -320,35 +305,6 @@ export function validateCommand(
           409,
         );
       return { command: 'sdm.devices.commands.ThermostatEco.SetMode', params: { mode } };
-    }
-    case 'fan': {
-      if (!snapshot.hasFan || snapshot.fanTimerMode === null) {
-        throw new CommandValidationError(
-          'FAN_UNAVAILABLE',
-          'This thermostat does not report an available fan timer.',
-        );
-      }
-      if (request.timerMode === 'OFF') {
-        exactKeys(request, ['type', 'timerMode']);
-        return { command: 'sdm.devices.commands.Fan.SetTimer', params: { timerMode: 'OFF' } };
-      }
-      exactKeys(request, ['type', 'timerMode', 'durationSeconds']);
-      if (
-        request.timerMode !== 'ON' ||
-        typeof request.durationSeconds !== 'number' ||
-        !Number.isInteger(request.durationSeconds) ||
-        request.durationSeconds < 1 ||
-        request.durationSeconds > 43_200
-      ) {
-        throw new CommandValidationError(
-          'INVALID_FAN_DURATION',
-          'Choose a whole-number fan duration between 1 second and 12 hours.',
-        );
-      }
-      return {
-        command: 'sdm.devices.commands.Fan.SetTimer',
-        params: { timerMode: 'ON', duration: `${request.durationSeconds}s` },
-      };
     }
     default:
       throw new CommandValidationError('INVALID_COMMAND', 'Choose a supported thermostat control.');

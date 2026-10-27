@@ -17,7 +17,7 @@
   color-scheme: light dark;
 }
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
     --page: #0f1115;
     --card: #181b21;
     --fg: #e9ebef;
@@ -33,6 +33,26 @@
     --ok: #51cf66;
     --bad: #ff6b6b;
   }
+}
+:root[data-theme='dark'] {
+  --page: #0f1115;
+  --card: #181b21;
+  --fg: #e9ebef;
+  --muted: #9aa1ad;
+  --line: #2a2f38;
+  --soft: #20242c;
+  --accent: #748ffc;
+  --accent-fg: #0f1115;
+  --heat: #ff922b;
+  --cool: #4dabf7;
+  --eco: #51cf66;
+  --off: #868e96;
+  --ok: #51cf66;
+  --bad: #ff6b6b;
+  color-scheme: dark;
+}
+:root[data-theme='light'] {
+  color-scheme: light;
 }
 * {
   box-sizing: border-box;
@@ -542,6 +562,78 @@ dialog label {
 .error {
   color: var(--bad);
   font-size: 14px;
+}
+
+button.gear {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  min-height: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 50%;
+  color: var(--muted);
+}
+.gear svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+button.gear:not(:disabled):hover {
+  color: var(--fg);
+}
+.setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+  font-size: 15px;
+}
+dialog label.setting {
+  color: var(--fg);
+  font-size: 15px;
+}
+.setting-group {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+.setting-group legend {
+  float: left;
+  grid-column: 1 / -1;
+  width: 100%;
+  margin-bottom: 4px;
+  font-size: 15px;
+}
+.setting-group label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--fg);
+}
+input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--accent);
+}
+#theme-control [aria-pressed='true'] {
+  background: var(--card);
+  color: var(--fg);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
 }
 
 @media (max-width: 400px) {

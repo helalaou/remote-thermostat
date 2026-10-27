@@ -3,12 +3,21 @@ const DEMO_ONLY = document.querySelector('meta[name="demo-only"]')?.content === 
 const POLL_MS = 30_000;
 const modeNames = { HEAT: 'Heat', COOL: 'Cool', HEATCOOL: 'Heat/Cool', OFF: 'Off' };
 const fallbackLimits = { minCelsius: 10, maxCelsius: 30, minRangeGapCelsius: 1.5 };
-let unit = 'C';
+const SETTINGS_KEY = 'remote-thermostat-settings';
+const ALL_MODES = ['HEAT', 'COOL', 'HEATCOOL', 'OFF'];
+// Display preferences for this browser only; they don't restrict what the server allows.
+const settings = { theme: 'system', unit: 'C', modes: [...ALL_MODES], eco: true };
 try {
-  unit = localStorage.getItem('neighbor-temperature-unit') === 'F' ? 'F' : 'C';
+  const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
+  if (['system', 'light', 'dark'].includes(saved.theme)) settings.theme = saved.theme;
+  settings.unit =
+    (saved.unit || localStorage.getItem('neighbor-temperature-unit')) === 'F' ? 'F' : 'C';
+  if (Array.isArray(saved.modes)) settings.modes = ALL_MODES.filter((m) => saved.modes.includes(m));
+  if (typeof saved.eco === 'boolean') settings.eco = saved.eco;
 } catch {
   /* Storage is optional. */
 }
+let unit = settings.unit;
 const state = {
   session: { authenticated: false, configured: false },
   snapshot: null,
@@ -60,8 +69,6 @@ function contextKey() {
           cool: s.coolCelsius,
           modes: s.availableModes,
           ecoModes: s.availableEcoModes,
-          fan: s.hasFan,
-          fanTimer: s.fanTimerMode,
           setpoint: s.hasSetpoint,
         }
       : null,
@@ -319,10 +326,12 @@ function render() {
         : '',
   );
   $('refresh').disabled = state.loading || state.busy || (!live && !state.demo);
-  const modes =
+  // The active mode always stays visible so it can be seen and changed.
+  const modes = (
     state.connected && s
       ? (s.availableModes || []).filter((m) => Object.hasOwn(modeNames, m))
-      : ['HEAT', 'OFF'];
+      : ALL_MODES
+  ).filter((m) => settings.modes.includes(m) || (state.connected && s?.mode === m));
   $('mode-buttons').replaceChildren();
   for (const mode of modes) {
     const button = document.createElement('button');
@@ -337,7 +346,7 @@ function render() {
   const hasEco = Boolean(
     s?.availableEcoModes?.includes('MANUAL_ECO') && s.availableEcoModes.includes('OFF'),
   );
-  $('eco-controls').hidden = !hasEco;
+  $('eco-controls').hidden = !hasEco || (!settings.eco && !eco);
   $('eco-toggle').disabled = !canControl();
   $('eco-toggle').setAttribute('aria-pressed', String(eco));
   $('eco-toggle').setAttribute('aria-label', eco ? 'Turn Eco off' : 'Turn Eco on');
@@ -347,18 +356,6 @@ function render() {
     'eco-readings',
     `Eco range ${temperatureText(s?.ecoHeatCelsius)}–${temperatureText(s?.ecoCoolCelsius)}`,
   );
-  $('fan-card').hidden = !s?.hasFan;
-  const fanRunning = s?.fanTimerMode === 'ON';
-  text(
-    'fan-description',
-    fanRunning ? `Running${s.fanTimerTimeout ? ` until ${timeLabel(s.fanTimerTimeout)}` : ''}` : '',
-  );
-  $('fan-start').hidden = fanRunning;
-  $('fan-duration').hidden = fanRunning;
-  $('fan-start').disabled = !canControl();
-  $('fan-duration').disabled = !canControl();
-  $('fan-stop').hidden = !fanRunning;
-  $('fan-stop').disabled = !canControl();
   $('owner-card').hidden = state.session.role !== 'owner' || state.demo;
   $('google-connect').disabled = state.busy || !state.owner?.googleConfigured;
   $('main').classList.toggle('is-busy', state.busy);
@@ -500,13 +497,23 @@ async function revokeKey(entry) {
   }
   await refreshOwner();
 }
-function setUnit(next) {
-  unit = next;
+function saveSettings() {
   try {
-    localStorage.setItem('neighbor-temperature-unit', unit);
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
   } catch {
     /* Storage is optional. */
   }
+}
+function applyTheme() {
+  if (settings.theme === 'system') delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = settings.theme;
+  for (const button of document.querySelectorAll('[data-theme-choice]'))
+    button.setAttribute('aria-pressed', String(button.dataset.themeChoice === settings.theme));
+}
+function setUnit(next) {
+  unit = next;
+  settings.unit = next;
+  saveSettings();
   render();
 }
 function adjustTemperature(direction) {
@@ -536,10 +543,6 @@ function commandDescription(command) {
         : `Switch to ${modeNames[command.mode]}?`;
     case 'eco':
       return command.mode === 'MANUAL_ECO' ? 'Turn Eco on?' : 'Turn Eco off?';
-    case 'fan':
-      return command.timerMode === 'OFF'
-        ? 'Stop the fan?'
-        : `Run the fan for ${$('fan-duration').selectedOptions[0]?.textContent || `${command.durationSeconds / 60} min`}?`;
     default:
       return 'Apply this change?';
   }
@@ -596,13 +599,6 @@ function demoApply(command) {
       command.mode === 'HEAT' ? 'HEATING' : command.mode === 'COOL' ? 'COOLING' : 'OFF';
   }
   if (command.type === 'eco') s.ecoMode = command.mode;
-  if (command.type === 'fan') {
-    s.fanTimerMode = command.timerMode;
-    s.fanTimerTimeout =
-      command.timerMode === 'ON'
-        ? new Date(Date.now() + command.durationSeconds * 1000).toISOString()
-        : null;
-  }
   s.observedAt = new Date().toISOString();
   state.checkedAt = s.observedAt;
   resetDraft();
@@ -669,8 +665,6 @@ function enterDemo() {
     availableModes: ['HEAT', 'COOL', 'HEATCOOL', 'OFF'],
     ecoMode: 'OFF',
     availableEcoModes: ['MANUAL_ECO', 'OFF'],
-    fanTimerMode: 'OFF',
-    fanTimerTimeout: null,
     ambientCelsius: 19.5,
     humidityPercent: 42,
     heatCelsius: 21,
@@ -679,7 +673,6 @@ function enterDemo() {
     ecoCoolCelsius: 27,
     temperatureScale: 'CELSIUS',
     hasSetpoint: true,
-    hasFan: true,
     hvacStatus: 'HEATING',
     observedAt: new Date().toISOString(),
   };
@@ -702,6 +695,35 @@ async function exitDemo() {
   await refreshSession();
 }
 $('unit-c').addEventListener('click', () => setUnit('C'));
+$('settings-open').addEventListener('click', () => {
+  for (const box of document.querySelectorAll('[data-mode-choice]'))
+    box.checked = settings.modes.includes(box.dataset.modeChoice);
+  $('show-eco').checked = settings.eco;
+  $('settings-dialog').showModal();
+});
+$('settings-close').addEventListener('click', () => $('settings-dialog').close());
+$('settings-dialog').addEventListener('click', (event) => {
+  if (event.target === $('settings-dialog')) $('settings-dialog').close();
+});
+for (const button of document.querySelectorAll('[data-theme-choice]'))
+  button.addEventListener('click', () => {
+    settings.theme = button.dataset.themeChoice;
+    saveSettings();
+    applyTheme();
+  });
+for (const box of document.querySelectorAll('[data-mode-choice]'))
+  box.addEventListener('change', () => {
+    settings.modes = ALL_MODES.filter(
+      (m) => document.querySelector(`[data-mode-choice="${m}"]`).checked,
+    );
+    saveSettings();
+    render();
+  });
+$('show-eco').addEventListener('change', () => {
+  settings.eco = $('show-eco').checked;
+  saveSettings();
+  render();
+});
 $('unit-f').addEventListener('click', () => setUnit('F'));
 $('temperature-down').addEventListener('click', () => adjustTemperature(-1));
 $('temperature-up').addEventListener('click', () => adjustTemperature(1));
@@ -734,10 +756,6 @@ $('eco-toggle').addEventListener('click', () =>
     mode: state.snapshot?.ecoMode === 'MANUAL_ECO' ? 'OFF' : 'MANUAL_ECO',
   }),
 );
-$('fan-start').addEventListener('click', () =>
-  askCommand({ type: 'fan', timerMode: 'ON', durationSeconds: Number($('fan-duration').value) }),
-);
-$('fan-stop').addEventListener('click', () => askCommand({ type: 'fan', timerMode: 'OFF' }));
 $('confirm-apply').addEventListener('click', executePendingCommand);
 for (const id of ['confirm-cancel', 'confirm-close'])
   $(id).addEventListener('click', () => dismissConfirmation());
@@ -874,6 +892,7 @@ window.addEventListener('pagehide', () => {
   $('access-key').value = '';
   clearCreatedKey();
 });
+applyTheme();
 render();
 if (DEMO_ONLY) enterDemo();
 else refreshSession();

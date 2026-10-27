@@ -261,7 +261,7 @@ export class ThermostatService {
       } catch {
         /* Accepted does not mean read back. */
       }
-      const confirmed = Boolean(readback && matches(command, readback, dispatchedAt));
+      const confirmed = Boolean(readback && matches(command, readback));
       this.store.audit(
         keyId,
         'thermostat-command',
@@ -311,7 +311,7 @@ export class ThermostatService {
     }
   }
 }
-function matches(command: SdmCommand, state: ThermostatSnapshot, dispatchedAt: number): boolean {
+function matches(command: SdmCommand, state: ThermostatSnapshot): boolean {
   if (state.connection !== 'ONLINE') return false;
   const close = (a: number | null, b: number) => a !== null && Math.abs(a - b) < 0.05;
   switch (command.command) {
@@ -329,14 +329,5 @@ function matches(command: SdmCommand, state: ThermostatSnapshot, dispatchedAt: n
       return state.mode === command.params.mode;
     case 'sdm.devices.commands.ThermostatEco.SetMode':
       return state.ecoMode === command.params.mode;
-    case 'sdm.devices.commands.Fan.SetTimer': {
-      if (command.params.timerMode === 'OFF') return state.fanTimerMode === 'OFF';
-      const expected = dispatchedAt + Number(command.params.duration.slice(0, -1)) * 1000;
-      return (
-        state.fanTimerMode === 'ON' &&
-        state.fanTimerTimeout !== null &&
-        Math.abs(Date.parse(state.fanTimerTimeout) - expected) <= 30_000
-      );
-    }
   }
 }

@@ -245,19 +245,6 @@ function assertWireCommand(value: SdmCommand): void {
         typeof fields.mode === 'string' &&
         ['MANUAL_ECO', 'OFF'].includes(fields.mode);
       break;
-    case 'sdm.devices.commands.Fan.SetTimer': {
-      const duration =
-        typeof fields.duration === 'string' && /^\d+s$/.test(fields.duration)
-          ? Number(fields.duration.slice(0, -1))
-          : NaN;
-      valid =
-        (fields.timerMode === 'OFF' && exact(['timerMode'])) ||
-        (fields.timerMode === 'ON' &&
-          exact(['timerMode', 'duration']) &&
-          duration >= 1 &&
-          duration <= 43_200);
-      break;
-    }
   }
   if (!valid) throw new TypeError('Unsupported or malformed SDM command.');
 }

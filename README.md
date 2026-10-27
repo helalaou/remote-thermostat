@@ -40,7 +40,7 @@ Nest Learning Thermostat 1st/2nd gen no longer work with Google's API.
 
 ## Limits
 
-- Only what Google's SDM API exposes: mode, target temperature, heat/cool range, Eco on/off, fan timer. No schedules.
+- Only what Google's SDM API exposes: mode, target temperature, heat/cool range, Eco on/off. No schedules or fan control.
 - Google allows 5 commands/minute and 100/hour across all apps.
 - Default target bounds are 10–30 °C (`TEMPERATURE_MIN_C` / `TEMPERATURE_MAX_C`).
 - Schedules, the physical thermostat and other apps can still change the temperature.

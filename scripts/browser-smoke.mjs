@@ -54,9 +54,6 @@ try {
   assert.equal(await page.locator('#temperature-up').isDisabled(), true);
   await page.locator('#eco-toggle').click();
   await page.locator('#confirm-apply').click();
-  await page.locator('#fan-start').click();
-  await page.locator('#confirm-apply').click();
-  assert.equal(await page.locator('#fan-stop').isVisible(), true);
   if (output) await page.screenshot({ path: join(output, 'desktop-demo.png'), fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   assert.equal(
@@ -72,7 +69,7 @@ try {
   assert.deepEqual(errors, []);
   assert.deepEqual(outgoing, []);
   console.log(
-    'Chromium smoke passed: disconnected state, demo controls, confirmation, Eco, fan, units, responsive390px layout; no external requests.',
+    'Chromium smoke passed: disconnected state, demo controls, confirmation, Eco, units, responsive390px layout; no external requests.',
   );
 } finally {
   await browser?.close();

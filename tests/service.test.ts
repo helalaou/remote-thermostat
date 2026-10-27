@@ -190,23 +190,6 @@ test('hourly command quota includes every command type and prevents dispatch', a
   assert.equal(result.status, 429);
   assert.equal(writes, 0);
 });
-test('fan ON readback does not falsely confirm a different timer duration', async (t) => {
-  const state = {
-    ...snapshot(),
-    hasFan: true,
-    fanTimerMode: 'ON' as const,
-    fanTimerTimeout: new Date(Date.now() + 60000).toISOString(),
-  };
-  const { service } = setup(t, { getDevice: async () => state, execute: async () => ({}) });
-  const result = await service.command(
-    'guest',
-    randomUUID(),
-    { type: 'fan', timerMode: 'ON', durationSeconds: 3600 },
-    () => true,
-  );
-  assert.equal(result.body.accepted, true);
-  assert.equal(result.body.confirmed, false);
-});
 test('application attempts are bounded before request/audit persistence, while replay remains free', async (t) => {
   const { service, store } = setup(t, null);
   for (let i = 0; i < 20; i++)

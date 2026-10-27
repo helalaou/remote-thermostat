@@ -48,8 +48,7 @@ test('parses only thermostat traits without exposing identifiers', () => {
   assert.equal(state.temperatureScale, 'FAHRENHEIT');
   assert.equal(state.hvacStatus, 'HEATING');
   assert.deepEqual(state.availableModes, ['HEAT', 'OFF']);
-  assert.equal(state.hasFan, false);
-  assert.equal(state.fanTimerMode, null);
+  assert.ok(!('hasFan' in state));
   assert.ok(!JSON.stringify(state).includes(resource));
 });
 
@@ -221,31 +220,13 @@ test('mode and Eco controls remain separate explicit operations', () => {
   );
 });
 
-test('fan controls require the trait and bounded whole-second duration', () => {
-  assert.throws(
-    () =>
-      validateCommand({ type: 'fan', timerMode: 'ON', durationSeconds: 900 }, snapshot(), {}, now),
-    code('FAN_UNAVAILABLE'),
-  );
+test('fan commands are not supported', () => {
   const state = snapshot({ [prefix + 'Fan']: { timerMode: 'OFF' } });
-  for (const durationSeconds of [1, 900, 43_200]) {
-    assert.deepEqual(
-      validateCommand({ type: 'fan', timerMode: 'ON', durationSeconds }, state, {}, now).params,
-      { timerMode: 'ON', duration: `${durationSeconds}s` },
-    );
-  }
-  for (const durationSeconds of [0, -1, 43_201, 1.5, NaN, '900'])
-    assert.throws(
-      () => validateCommand({ type: 'fan', timerMode: 'ON', durationSeconds }, state, {}, now),
-      code('INVALID_FAN_DURATION'),
-    );
-  assert.deepEqual(validateCommand({ type: 'fan', timerMode: 'OFF' }, state, {}, now).params, {
-    timerMode: 'OFF',
-  });
-  assert.throws(
-    () => validateCommand({ type: 'fan', timerMode: 'OFF', durationSeconds: 900 }, state, {}, now),
-    code('INVALID_COMMAND'),
-  );
+  for (const command of [
+    { type: 'fan', timerMode: 'ON', durationSeconds: 900 },
+    { type: 'fan', timerMode: 'OFF' },
+  ])
+    assert.throws(() => validateCommand(command, state, {}, now), code('INVALID_COMMAND'));
 });
 
 test('invalid administrator policy fails closed', () => {
