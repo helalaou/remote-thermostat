@@ -17,5 +17,3 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm run check
       - run: npm run format:check
-      - name: Build runtime image without secrets
-        run: docker build --tag remote-thermostat:ci .

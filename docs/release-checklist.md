@@ -6,7 +6,7 @@ Offline tests are necessary, not sufficient. Complete this checklist in your own
 
 - [ ] Review the code, README, MIT license attribution, and dependency lockfile.
 - [ ] Run `npm ci` and `npm run check` on Node.js 24.
-- [ ] If deploying Docker, build and run the image locally; verify the non-root container can write its data volume and restart without losing state.
+- [ ] Confirm the host keeps the data directory across restarts and redeploys.
 - [ ] Verify no `.env`, tokens, real device IDs, database files, or private screenshots are in the repository or image.
 - [ ] If publishing to GitHub, choose the intended repository/visibility and inspect the remote commit and CI results. A local Git history is not a published repository.
 

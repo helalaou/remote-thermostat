@@ -34,7 +34,7 @@ Guest keys expire (default 30 days). Revoking a key ends its sessions immediatel
 
 ## Connect a real thermostat
 
-Needs a Google Device Access account (one-time US$5 fee paid to Google). Steps: [docs/google-setup.md](docs/google-setup.md). Deploying with HTTPS/Docker: [docs/self-hosting.md](docs/self-hosting.md).
+Needs a Google Device Access account (one-time US$5 fee paid to Google). Steps: [docs/google-setup.md](docs/google-setup.md). Hosting it online (Railway, ~$5/month): [docs/self-hosting.md](docs/self-hosting.md).
 
 Nest Learning Thermostat 1st/2nd gen no longer work with Google's API.
 
