@@ -5,15 +5,13 @@ const modeNames = { HEAT: 'Heat', COOL: 'Cool', HEATCOOL: 'Heat/Cool', OFF: 'Off
 const fallbackLimits = { minCelsius: 10, maxCelsius: 30, minRangeGapCelsius: 1.5 };
 const SETTINGS_KEY = 'remote-thermostat-settings';
 const ALL_MODES = ['HEAT', 'COOL', 'HEATCOOL', 'OFF'];
-// Display preferences for this browser only; they don't restrict what the server allows.
-const settings = { theme: 'system', unit: 'C', modes: [...ALL_MODES], eco: true };
+// Theme and units are per-browser. Guest mode/Eco access is set by the owner on the server.
+const settings = { theme: 'system', unit: 'C' };
 try {
   const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
   if (['system', 'light', 'dark'].includes(saved.theme)) settings.theme = saved.theme;
   settings.unit =
     (saved.unit || localStorage.getItem('neighbor-temperature-unit')) === 'F' ? 'F' : 'C';
-  if (Array.isArray(saved.modes)) settings.modes = ALL_MODES.filter((m) => saved.modes.includes(m));
-  if (typeof saved.eco === 'boolean') settings.eco = saved.eco;
 } catch {
   /* Storage is optional. */
 }
@@ -32,6 +30,7 @@ const state = {
   demo: false,
   pollTimer: null,
   owner: null,
+  controls: { modes: [...ALL_MODES], eco: true },
   pendingCommand: null,
   confirmTimer: null,
   lastNotice: null,
@@ -170,10 +169,18 @@ function canControl() {
     !state.loading,
   );
 }
+// The demo previews the guest view so the owner's restrictions can be tried out.
+function guestView() {
+  return state.demo || state.session.role !== 'owner';
+}
+function modeAllowed(mode) {
+  return !guestView() || state.controls.modes.includes(mode);
+}
 function setpointEditable() {
   const s = state.snapshot;
   return (
     canControl() &&
+    modeAllowed(s?.mode) &&
     s?.hasSetpoint &&
     (!s.ecoMode || s.ecoMode === 'OFF') &&
     ['HEAT', 'COOL', 'HEATCOOL'].includes(s.mode)
@@ -293,7 +300,9 @@ function render() {
     'stepper-hint',
     editable
       ? `${temperatureText(state.limits.minCelsius)}–${temperatureText(state.limits.maxCelsius)}`
-      : '',
+      : canControl() && s?.hasSetpoint && !modeAllowed(s.mode)
+        ? 'Locked by owner'
+        : '',
   );
   for (const [id, field] of [
     ['range-heat', 'heatCelsius'],
@@ -331,7 +340,7 @@ function render() {
     state.connected && s
       ? (s.availableModes || []).filter((m) => Object.hasOwn(modeNames, m))
       : ALL_MODES
-  ).filter((m) => settings.modes.includes(m) || (state.connected && s?.mode === m));
+  ).filter((m) => modeAllowed(m) || (state.connected && s?.mode === m));
   $('mode-buttons').replaceChildren();
   for (const mode of modes) {
     const button = document.createElement('button');
@@ -346,7 +355,7 @@ function render() {
   const hasEco = Boolean(
     s?.availableEcoModes?.includes('MANUAL_ECO') && s.availableEcoModes.includes('OFF'),
   );
-  $('eco-controls').hidden = !hasEco || (!settings.eco && !eco);
+  $('eco-controls').hidden = !hasEco || (guestView() && !state.controls.eco && !eco);
   $('eco-toggle').disabled = !canControl();
   $('eco-toggle').setAttribute('aria-pressed', String(eco));
   $('eco-toggle').setAttribute('aria-label', eco ? 'Turn Eco off' : 'Turn Eco on');
@@ -357,6 +366,7 @@ function render() {
     `Eco range ${temperatureText(s?.ecoHeatCelsius)}–${temperatureText(s?.ecoCoolCelsius)}`,
   );
   $('owner-card').hidden = state.session.role !== 'owner' || state.demo;
+  $('guest-controls').hidden = !state.demo && state.session.role !== 'owner';
   $('google-connect').disabled = state.busy || !state.owner?.googleConfigured;
   $('main').classList.toggle('is-busy', state.busy);
 }
@@ -388,6 +398,7 @@ async function refreshStatus(manual = false) {
     state.stale = Boolean(result.stale);
     state.checkedAt = result.checkedAt || result.snapshot?.observedAt || null;
     state.limits = { ...fallbackLimits, ...result.limits };
+    if (result.controls) state.controls = result.controls;
     if (!state.dirty || !state.snapshot || state.snapshot.mode !== state.draft?.mode) {
       // Keep unsent changes only while their mode is unchanged.
       const draftMode = state.draft?.mode;
@@ -689,16 +700,42 @@ async function exitDemo() {
   state.connected = false;
   state.snapshot = null;
   state.stale = false;
+  state.controls = { modes: [...ALL_MODES], eco: true };
   resetDraft();
   render();
   notice('');
   await refreshSession();
 }
 $('unit-c').addEventListener('click', () => setUnit('C'));
-$('settings-open').addEventListener('click', () => {
+function fillGuestControls() {
   for (const box of document.querySelectorAll('[data-mode-choice]'))
-    box.checked = settings.modes.includes(box.dataset.modeChoice);
-  $('show-eco').checked = settings.eco;
+    box.checked = state.controls.modes.includes(box.dataset.modeChoice);
+  $('show-eco').checked = state.controls.eco;
+}
+async function saveGuestControls() {
+  const controls = {
+    modes: ALL_MODES.filter((m) => document.querySelector(`[data-mode-choice="${m}"]`).checked),
+    eco: $('show-eco').checked,
+  };
+  if (state.demo) {
+    state.controls = controls;
+    render();
+    return;
+  }
+  if (state.session.role !== 'owner') return;
+  try {
+    state.controls = await api('/api/owner/controls', {
+      method: 'PUT',
+      body: JSON.stringify(controls),
+    });
+  } catch (error) {
+    notice(errorMessage(error), 'error');
+    fillGuestControls();
+  }
+  render();
+}
+$('settings-open').addEventListener('click', () => {
+  fillGuestControls();
   $('settings-dialog').showModal();
 });
 $('settings-close').addEventListener('click', () => $('settings-dialog').close());
@@ -711,19 +748,8 @@ for (const button of document.querySelectorAll('[data-theme-choice]'))
     saveSettings();
     applyTheme();
   });
-for (const box of document.querySelectorAll('[data-mode-choice]'))
-  box.addEventListener('change', () => {
-    settings.modes = ALL_MODES.filter(
-      (m) => document.querySelector(`[data-mode-choice="${m}"]`).checked,
-    );
-    saveSettings();
-    render();
-  });
-$('show-eco').addEventListener('change', () => {
-  settings.eco = $('show-eco').checked;
-  saveSettings();
-  render();
-});
+for (const box of document.querySelectorAll('[data-mode-choice], #show-eco'))
+  box.addEventListener('change', saveGuestControls);
 $('unit-f').addEventListener('click', () => setUnit('F'));
 $('temperature-down').addEventListener('click', () => adjustTemperature(-1));
 $('temperature-up').addEventListener('click', () => adjustTemperature(1));

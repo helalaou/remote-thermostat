@@ -304,31 +304,77 @@ test('automatic refresh runs every 30 seconds only while visible, with no overla
   assert.equal(app.calls.filter((path) => path === '/api/thermostat').length, reads + 1);
   assert.equal([...timers.values()].filter((item) => item.delay === 30_000).length, 1);
 });
-test('settings hide unwanted modes and Eco, keep the active mode, and switch theme', async (t) => {
+test('theme setting applies and persists per browser', async (t) => {
   const app = createUI(normalHandler);
   t.after(app.close);
   await settle();
-  const modeButtons = () =>
-    [...app.el('mode-buttons').querySelectorAll('button')].map((button) => button.textContent);
   app.el<HTMLButtonElement>('settings-open').click();
   assert.equal(app.el<HTMLDialogElement>('settings-dialog').open, true);
-  for (const mode of ['HEAT', 'OFF']) {
-    const box = app.window.document.querySelector<HTMLInputElement>(
-      `[data-mode-choice="${mode}"]`,
-    )!;
-    box.checked = false;
-    box.dispatchEvent(new app.window.Event('change'));
-  }
-  // HEAT is the current mode, so it stays visible; OFF is hidden.
-  assert.deepEqual(modeButtons(), ['Heat']);
+  assert.equal(app.el<HTMLElement>('guest-controls').hidden, true, 'guests cannot edit access');
   app.window.document.querySelector<HTMLButtonElement>('[data-theme-choice="dark"]')!.click();
   assert.equal(app.window.document.documentElement.dataset.theme, 'dark');
+  assert.equal(
+    JSON.parse(app.window.localStorage.getItem('remote-thermostat-settings')!).theme,
+    'dark',
+  );
   app.window.document.querySelector<HTMLButtonElement>('[data-theme-choice="system"]')!.click();
   assert.equal(app.window.document.documentElement.dataset.theme, undefined);
-  const saved = JSON.parse(app.window.localStorage.getItem('remote-thermostat-settings')!);
-  assert.deepEqual(saved.modes, ['COOL', 'HEATCOOL']);
 });
-test('demo hides Eco when turned off in settings unless Eco is active', async (t) => {
+test('guests see only owner-allowed modes and Eco, keeping the active mode visible but locked', async (t) => {
+  const app = createUI((path) => {
+    if (path === '/api/thermostat')
+      return response({
+        connected: true,
+        stale: false,
+        limits,
+        snapshot: snapshot({
+          availableModes: ['HEAT', 'COOL', 'OFF'],
+          availableEcoModes: ['MANUAL_ECO', 'OFF'],
+        }),
+        controls: { modes: ['COOL', 'OFF'], eco: false },
+      });
+    return normalHandler(path);
+  });
+  t.after(app.close);
+  await settle();
+  const buttons = [...app.el('mode-buttons').querySelectorAll('button')];
+  assert.deepEqual(
+    buttons.map((button) => button.textContent),
+    ['Heat', 'Cool', 'Off'],
+  );
+  assert.equal(app.ui.setpointEditable(), false, 'HEAT is active but not allowed');
+  assert.equal(app.el('stepper-hint').textContent, 'Locked by owner');
+  assert.equal(app.el<HTMLElement>('eco-controls').hidden, true);
+});
+test('owner edits guest access through the server', async (t) => {
+  const puts: unknown[] = [];
+  const app = createUI((path, options) => {
+    if (path === '/api/session')
+      return response({ authenticated: true, role: 'owner', csrfToken: 'c', configured: true });
+    if (path === '/api/owner/status')
+      return response({ googleConfigured: true, googleConnected: true, accessKeys: [] });
+    if (path === '/api/owner/controls') {
+      const body = JSON.parse(options!.body as string);
+      puts.push(body);
+      return response(body);
+    }
+    return normalHandler(path);
+  });
+  t.after(app.close);
+  await settle();
+  app.el<HTMLButtonElement>('settings-open').click();
+  assert.equal(app.el<HTMLElement>('guest-controls').hidden, false);
+  const off = app.window.document.querySelector<HTMLInputElement>('[data-mode-choice="OFF"]')!;
+  off.checked = false;
+  off.dispatchEvent(new app.window.Event('change'));
+  await settle();
+  assert.deepEqual(puts, [{ modes: ['HEAT', 'COOL', 'HEATCOOL'], eco: true }]);
+  // The owner is never restricted, so Off still shows for them.
+  assert.ok(
+    [...app.el('mode-buttons').querySelectorAll('button')].some((b) => b.textContent === 'Off'),
+  );
+});
+test('demo previews guest access locally', async (t) => {
   const app = createUI(normalHandler);
   t.after(app.close);
   await settle();
@@ -340,5 +386,5 @@ test('demo hides Eco when turned off in settings unless Eco is active', async (t
   assert.equal(app.el<HTMLElement>('eco-controls').hidden, true);
   app.ui.state.snapshot.ecoMode = 'MANUAL_ECO';
   app.ui.render();
-  assert.equal(app.el<HTMLElement>('eco-controls').hidden, false);
+  assert.equal(app.el<HTMLElement>('eco-controls').hidden, false, 'active Eco can be turned off');
 });

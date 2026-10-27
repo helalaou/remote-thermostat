@@ -309,3 +309,62 @@ test('owner creates and revokes guest keys in the app; guests and owner keys are
   );
   assert.ok(store.hasOwner());
 });
+test('owner-set guest controls are enforced on the server for guests only', async (t) => {
+  const { app, store, config } = setup(t);
+  const owner = store.createKey('owner', 'Owner');
+  const guest = store.createKey('neighbor', 'Guest', Date.now() + 86_400_000);
+  const as = async (token: string) => {
+    const signed = await login(app, config.origin, token);
+    return {
+      Origin: config.origin,
+      'Content-Type': 'application/json',
+      Cookie: signed.cookie,
+      'X-CSRF-Token': signed.data.csrfToken,
+    };
+  };
+  const ownerHeaders = await as(owner.token);
+  const guestHeaders = await as(guest.token);
+  const put = (body: unknown, headers: Record<string, string>) =>
+    app.request('/api/owner/controls', { method: 'PUT', headers, body: JSON.stringify(body) });
+  const send = (command: unknown, headers: Record<string, string>) =>
+    app.request('/api/commands', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ requestId: crypto.randomUUID(), command }),
+    });
+
+  for (const bad of [
+    { modes: ['HEAT', 'FAN'], eco: true },
+    { modes: ['HEAT', 'HEAT'], eco: true },
+    { modes: 'HEAT', eco: true },
+    { modes: ['HEAT'], eco: 'yes' },
+    { modes: ['HEAT'], eco: true, extra: 1 },
+  ])
+    assert.equal((await put(bad, ownerHeaders)).status, 400);
+  assert.equal((await put({ modes: ['COOL'], eco: false }, guestHeaders)).status, 403);
+  assert.equal((await put({ modes: ['OFF', 'COOL'], eco: false }, ownerHeaders)).status, 200);
+
+  const status = await (
+    await app.request('/api/thermostat', { headers: { Cookie: guestHeaders.Cookie } })
+  ).json();
+  assert.deepEqual(status.controls, { modes: ['COOL', 'OFF'], eco: false });
+
+  for (const command of [
+    { type: 'mode', mode: 'HEAT' },
+    { type: 'mode', mode: 'HEATCOOL' },
+    { type: 'heat', heatCelsius: 21 },
+    { type: 'range', heatCelsius: 20, coolCelsius: 24 },
+    { type: 'eco', mode: 'MANUAL_ECO' },
+  ]) {
+    const response = await send(command, guestHeaders);
+    assert.equal(response.status, 403, JSON.stringify(command));
+    assert.match((await response.json()).message, /owner has turned/);
+  }
+  // Allowed guest commands and every owner command reach the thermostat service (not refused here).
+  for (const [command, headers] of [
+    [{ type: 'mode', mode: 'COOL' }, guestHeaders],
+    [{ type: 'eco', mode: 'OFF' }, guestHeaders],
+    [{ type: 'mode', mode: 'HEAT' }, ownerHeaders],
+  ] as const)
+    assert.notEqual((await send(command, headers)).status, 403, JSON.stringify(command));
+});

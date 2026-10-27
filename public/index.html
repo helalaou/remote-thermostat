@@ -162,17 +162,14 @@
             ><button id="unit-f" type="button" aria-pressed="false">°F</button>
           </div>
         </div>
-        <fieldset class="setting-group">
-          <legend>Modes to show</legend>
+        <fieldset id="guest-controls" class="setting-group" hidden>
+          <legend>Guests can use</legend>
           <label><input type="checkbox" data-mode-choice="HEAT" /> Heat</label>
           <label><input type="checkbox" data-mode-choice="COOL" /> Cool</label>
           <label><input type="checkbox" data-mode-choice="HEATCOOL" /> Heat/Cool</label>
           <label><input type="checkbox" data-mode-choice="OFF" /> Off</label>
+          <label><input id="show-eco" type="checkbox" /> Eco</label>
         </fieldset>
-        <label class="setting">
-          <span>Show Eco</span>
-          <input id="show-eco" type="checkbox" />
-        </label>
       </div>
     </dialog>
     <dialog id="login-dialog" aria-labelledby="login-title">

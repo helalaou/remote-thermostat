@@ -11,6 +11,12 @@ import { GoogleConnection } from './google/connection.ts';
 import { SdmClient, GoogleApiError } from './google/sdm.ts';
 import { ThermostatService } from './service.ts';
 import { CommandValidationError } from './domain/thermostat.ts';
+import {
+  guestRefusal,
+  parseGuestControls,
+  readGuestControls,
+  writeGuestControls,
+} from './controls.ts';
 
 type AppEnv = { Variables: { session: Session | null } };
 export interface AppOptions {
@@ -146,7 +152,9 @@ export function createApp({
     if (!c.get('session')) return c.json({ message: 'Please sign in.' }, 401);
     await next();
   });
-  app.get('/api/thermostat', async (c) => c.json(await thermostat.status()));
+  app.get('/api/thermostat', async (c) =>
+    c.json({ ...(await thermostat.status()), controls: readGuestControls(store) }),
+  );
   app.post('/api/commands', async (c) => {
     const body = (await c.req.json()) as Record<string, unknown>;
     if (
@@ -158,6 +166,10 @@ export function createApp({
     )
       return c.json({ message: 'A command and unique request ID are required.' }, 400);
     const session = c.get('session')!;
+    if (session.role !== 'owner') {
+      const refusal = guestRefusal(body.command, readGuestControls(store));
+      if (refusal) return c.json({ message: refusal }, 403);
+    }
     const token = getCookie(c, cookieName);
     const result = await thermostat.command(session.keyId, body.requestId, body.command, () =>
       Boolean(store.session(token)),
@@ -177,11 +189,19 @@ export function createApp({
       googleConnected: connection.connected,
       deviceConfigured: Boolean(connection.resource),
       accessKeys: store.listKeys(),
+      guestControls: readGuestControls(store),
       setupMessage: googleConfigured(config)
         ? 'Ready for the owner to authorize one thermostat.'
         : 'Not configured. See docs/google-setup.md.',
     }),
   );
+  app.put('/api/owner/controls', async (c) => {
+    const controls = parseGuestControls(await c.req.json());
+    if (!controls) return c.json({ message: 'Choose which modes and Eco guests can use.' }, 400);
+    writeGuestControls(store, controls);
+    store.audit(c.get('session')!.keyId, 'guest-controls', JSON.stringify(controls));
+    return c.json(controls);
+  });
   app.post('/api/owner/keys', async (c) => {
     const body = (await c.req.json()) as Record<string, unknown>;
     if (
