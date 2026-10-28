@@ -1,5 +1,4 @@
 const $ = (id) => document.getElementById(id);
-const DEMO_ONLY = document.querySelector('meta[name="demo-only"]')?.content === 'true';
 const POLL_MS = 30_000;
 const modeNames = { HEAT: 'Heat', COOL: 'Cool', HEATCOOL: 'Heat/Cool', OFF: 'Off' };
 const fallbackLimits = { minCelsius: 10, maxCelsius: 30, minRangeGapCelsius: 1.5 };
@@ -10,8 +9,7 @@ const settings = { theme: 'system', unit: 'C' };
 try {
   const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
   if (['system', 'light', 'dark'].includes(saved.theme)) settings.theme = saved.theme;
-  settings.unit =
-    (saved.unit || localStorage.getItem('neighbor-temperature-unit')) === 'F' ? 'F' : 'C';
+  settings.unit = saved.unit === 'F' ? 'F' : 'C';
 } catch {
   /* Storage is optional. */
 }
@@ -115,8 +113,6 @@ function validateConfirmation() {
 }
 
 async function api(path, options = {}) {
-  // A separately hosted preview must never touch the server or attempt real login/control.
-  if (DEMO_ONLY) throw new Error('This preview has no server connection.');
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15_000);
   try {
@@ -215,7 +211,7 @@ function render() {
           : state.session.label || 'Guest'
         : '',
   );
-  $('login-open').hidden = state.session.authenticated || DEMO_ONLY;
+  $('login-open').hidden = state.session.authenticated;
   $('logout').hidden = !state.session.authenticated || state.demo;
   $('logout').disabled = state.busy;
   $('login-open').disabled = state.busy;
@@ -223,8 +219,7 @@ function render() {
   $('exit-demo').disabled = state.busy;
   $('confirm-apply').disabled = state.busy || state.loading;
   $('demo-banner').hidden = !state.demo;
-  $('exit-demo').hidden = DEMO_ONLY;
-  $('start-demo').hidden = state.demo || state.session.authenticated || DEMO_ONLY;
+  $('start-demo').hidden = state.demo || state.session.authenticated;
   $('unit-c').setAttribute('aria-pressed', String(unit === 'C'));
   $('unit-f').setAttribute('aria-pressed', String(unit === 'F'));
   const badge = state.demo
@@ -694,7 +689,7 @@ function enterDemo() {
   render();
 }
 async function exitDemo() {
-  if (DEMO_ONLY || state.busy) return;
+  if (state.busy) return;
   transitionView();
   state.demo = false;
   state.connected = false;
@@ -852,7 +847,7 @@ $('logout').addEventListener('click', async () => {
   }
 });
 $('google-connect').addEventListener('click', async () => {
-  if (state.demo || DEMO_ONLY || state.session.role !== 'owner' || state.busy) return;
+  if (state.demo || state.session.role !== 'owner' || state.busy) return;
   const generation = state.generation;
   state.busy = true;
   render();
@@ -920,5 +915,4 @@ window.addEventListener('pagehide', () => {
 });
 applyTheme();
 render();
-if (DEMO_ONLY) enterDemo();
-else refreshSession();
+refreshSession();

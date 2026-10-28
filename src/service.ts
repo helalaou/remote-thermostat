@@ -242,7 +242,6 @@ export class ThermostatService {
           503,
         );
       dispatched = true;
-      const dispatchedAt = this.now();
       await client.execute(
         command,
         () => authorized() && generation === this.generation && this.client() === initialClient,

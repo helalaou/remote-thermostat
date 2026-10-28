@@ -5,7 +5,6 @@ import { JSDOM } from 'jsdom';
 
 const source = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
 const template = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
-const demoTemplate = readFileSync(new URL('../public/demo.html', import.meta.url), 'utf8');
 const limits = { minCelsius: 10, maxCelsius: 30, minRangeGapCelsius: 1.5 };
 const snapshot = (overrides: Record<string, unknown> = {}) => ({
   connection: 'ONLINE',
@@ -38,11 +37,8 @@ async function settle() {
     await new Promise<void>((resolve) => setImmediate(resolve));
 }
 // Tests inspect lexical state only in this isolated VM; production exposes no debugging API.
-function createUI(
-  handler: (path: string, options?: Record<string, unknown>) => unknown,
-  demo = false,
-) {
-  const dom = new JSDOM(demo ? demoTemplate : template, {
+function createUI(handler: (path: string, options?: Record<string, unknown>) => unknown) {
+  const dom = new JSDOM(template, {
     url: 'https://thermostat.example/',
     runScripts: 'outside-only',
     pretendToBeVisual: true,
@@ -87,11 +83,12 @@ function normalHandler(path: string) {
   throw new Error(`Unexpected request: ${path}`);
 }
 
-test('isolated demo never fetches, including command interactions', async (t) => {
-  const app = createUI(() => {
-    throw new Error('Static demo used fetch');
-  }, true);
+test('demo commands never reach the server', async (t) => {
+  const app = createUI(normalHandler);
   t.after(app.close);
+  await settle();
+  app.ui.enterDemo();
+  const before = app.calls.length;
   assert.equal(app.ui.state.demo, true);
   assert.equal(app.el('target-value').textContent, '21');
   app.ui.adjustTemperature(1);
@@ -103,8 +100,7 @@ test('isolated demo never fetches, including command interactions', async (t) =>
   await app.ui.executePendingCommand();
   assert.equal(app.ui.setpointEditable(), false);
   assert.equal(app.el<HTMLButtonElement>('temperature-up').disabled, true);
-  await assert.rejects(app.ui.api('/api/commands'), /no server connection/);
-  assert.deepEqual(app.calls, []);
+  assert.equal(app.calls.length, before);
 });
 
 test('disconnected state never invents a live temperature', async (t) => {
