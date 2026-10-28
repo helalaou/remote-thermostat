@@ -1,184 +1,178 @@
-import test, { type TestContext } from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { createApp } from '../src/app.ts';
 import { readConfig } from '../src/config.ts';
-import { Store } from '../src/store.ts';
-function setup(t: TestContext, secure = false) {
-  const path = mkdtempSync(join(tmpdir(), 'nest-app-'));
-  const store = new Store(path);
-  t.after(() => {
-    store.close();
-    rmSync(path, { recursive: true, force: true });
-  });
+import { GoogleConnection } from '../src/google/connection.ts';
+import { memoryAccessStore } from '../src/controls.ts';
+
+const ADMIN = 'correct-horse-battery-staple';
+const USER = 'prancer';
+function setup(env: Record<string, string> = {}) {
   const config = readConfig({
-    APP_ORIGIN: secure ? 'https://example.test' : 'http://localhost:3000',
+    APP_ORIGIN: 'http://localhost:3000',
+    ADMIN_CODE: ADMIN,
+    USER_CODE: USER,
+    ...env,
   });
-  return { store, config, app: createApp({ config, store }) };
+  return { config, app: createApp({ config, access: memoryAccessStore() }) };
 }
-async function login(app: ReturnType<typeof createApp>, origin: string, key: string) {
+type App = ReturnType<typeof createApp>;
+async function login(app: App, origin: string, code: string) {
   const response = await app.request('/api/login', {
     method: 'POST',
     headers: { Origin: origin, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ key }),
+    body: JSON.stringify({ code }),
   });
+  const data = await response.json();
+  const cookie = response.headers.get('Set-Cookie')?.split(';')[0] ?? '';
   return {
     response,
-    cookie: response.headers.get('Set-Cookie')!.split(';')[0],
-    data: await response.json(),
+    data,
+    headers: {
+      Origin: origin,
+      'Content-Type': 'application/json',
+      Cookie: cookie,
+      'X-CSRF-Token': data.csrfToken as string,
+    },
   };
 }
-test('anonymous visitors get no thermostat data or owner configuration and cannot bootstrap', async (t) => {
-  const { app } = setup(t);
+const send = (app: App, headers: Record<string, string>, command: unknown) =>
+  app.request('/api/commands', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ requestId: crypto.randomUUID(), command }),
+  });
+const putAccess = (app: App, headers: Record<string, string>, body: unknown) =>
+  app.request('/api/admin/access', { method: 'PUT', headers, body: JSON.stringify(body) });
+
+test('anonymous visitors get nothing private', async () => {
+  const { app } = setup();
   assert.equal((await app.request('/healthz')).status, 200);
   assert.deepEqual(await (await app.request('/api/session')).json(), {
     authenticated: false,
-    configured: false,
+    configured: true,
   });
   assert.equal((await app.request('/api/thermostat')).status, 401);
-  assert.equal((await app.request('/api/owner/status')).status, 403);
-  assert.equal((await app.request('/api/create-owner', { method: 'POST' })).status, 403);
+  assert.equal((await app.request('/api/admin/access')).status, 403);
 });
-test('login requires exact origin and JSON; production cookies are hardened', async (t) => {
-  const { app, store, config } = setup(t, true);
-  const key = store.createKey('owner', 'Test owner');
-  for (const origin of ['https://evil.test', 'null', 'https://example.test.evil.test', ''])
-    assert.equal(
-      (
-        await app.request('/api/login', {
-          method: 'POST',
-          headers: { Origin: origin, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ key: key.token }),
-        })
-      ).status,
-      403,
-    );
-  const logged = await login(app, config.origin, key.token);
-  assert.equal(logged.response.status, 200);
-  const cookie = logged.response.headers.get('Set-Cookie')!;
-  for (const part of ['__Host-neighbor-session=', 'HttpOnly', 'Secure', 'SameSite=Lax', 'Path=/'])
+
+test('login needs the right code, exact origin and JSON; production cookies are hardened', async () => {
+  const { app, config } = setup({ APP_ORIGIN: 'https://thermo.example' });
+  for (const origin of ['https://evil.example', 'null', ''])
+    assert.equal((await login(app, origin, ADMIN)).response.status, 403);
+  assert.equal((await login(app, config.origin, 'prancer2')).response.status, 401);
+  const signed = await login(app, config.origin, USER);
+  assert.equal(signed.response.status, 200);
+  assert.equal(signed.data.role, 'user');
+  const cookie = signed.response.headers.get('Set-Cookie')!;
+  for (const part of ['__Host-thermostat-session=', 'HttpOnly', 'Secure', 'SameSite=Lax', 'Path=/'])
     assert.ok(cookie.includes(part));
-  assert.ok(!cookie.includes(key.token));
-  assert.ok(!JSON.stringify(logged.data).includes(key.token));
-  assert.equal(logged.response.headers.get('Referrer-Policy'), 'no-referrer');
-  assert.match(logged.response.headers.get('Content-Security-Policy')!, /frame-ancestors 'none'/);
+  assert.ok(!cookie.includes(USER));
+  assert.match(signed.response.headers.get('Content-Security-Policy')!, /frame-ancestors 'none'/);
 });
-test('neighbor cannot connect Google; mutations require session CSRF; revocation is immediate', async (t) => {
-  const { app, store, config } = setup(t);
-  const key = store.createKey('neighbor', 'Neighbor');
-  const logged = await login(app, config.origin, key.token);
-  const headers = {
-    Origin: config.origin,
-    'Content-Type': 'application/json',
-    Cookie: logged.cookie,
-  };
+
+test('writes need the session CSRF token; the user cannot reach admin routes', async () => {
+  const { app, config } = setup();
+  const user = await login(app, config.origin, USER);
+  const noCsrf = { ...user.headers, 'X-CSRF-Token': '' };
+  assert.equal((await send(app, noCsrf, { type: 'mode', mode: 'HEAT' })).status, 403);
   assert.equal(
-    (await app.request('/api/logout', { method: 'POST', headers, body: '{}' })).status,
+    (await app.request('/api/logout', { method: 'POST', headers: noCsrf, body: '{}' })).status,
     403,
   );
-  const authorized = { ...headers, 'X-CSRF-Token': logged.data.csrfToken };
-  assert.equal(
-    (
-      await app.request('/api/owner/google/connect', {
-        method: 'POST',
-        headers: authorized,
-        body: '{}',
-      })
-    ).status,
-    403,
-  );
-  const status = await (
-    await app.request('/api/thermostat', { headers: { Cookie: logged.cookie } })
-  ).json();
-  assert.equal(status.connected, false);
-  assert.equal(status.snapshot, undefined);
-  store.revokeKey(key.id);
-  assert.equal(
-    (await app.request('/api/thermostat', { headers: { Cookie: logged.cookie } })).status,
-    401,
-  );
+  assert.equal((await app.request('/api/admin/access', { headers: user.headers })).status, 403);
+  assert.equal((await putAccess(app, user.headers, {})).status, 403);
 });
-test('bounded request bodies and login throttling fail safely', async (t) => {
-  const { app, config } = setup(t);
-  const headers = { Origin: config.origin, 'Content-Type': 'application/json' };
-  assert.equal(
-    (
-      await app.request('/api/login', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ key: 'x'.repeat(5000) }),
-      })
-    ).status,
-    413,
-  );
-  for (let i = 0; i < 20; i++)
-    await app.request('/api/login', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ key: 'invalid' }),
-    });
-  const response = await app.request('/api/login', {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ key: 'invalid' }),
+
+test('admin sets user access; the server enforces modes, Eco, range and on/off', async () => {
+  const { app, config } = setup();
+  const admin = await login(app, config.origin, ADMIN);
+  const user = await login(app, config.origin, USER);
+  const current = await (await app.request('/api/admin/access', { headers: admin.headers })).json();
+  assert.deepEqual(current.access, {
+    enabled: true,
+    modes: ['HEAT', 'COOL', 'HEATCOOL', 'OFF'],
+    eco: true,
+    minCelsius: 10,
+    maxCelsius: 30,
   });
+  const valid = { enabled: true, modes: ['HEAT'], eco: false, minCelsius: 17, maxCelsius: 23 };
+  for (const bad of [
+    { ...valid, modes: ['FAN'] },
+    { ...valid, modes: ['HEAT', 'HEAT'] },
+    { ...valid, minCelsius: 5 },
+    { ...valid, maxCelsius: 31 },
+    { ...valid, minCelsius: 22, maxCelsius: 22.5 },
+    { ...valid, eco: 'no' },
+    { ...valid, extra: 1 },
+  ])
+    assert.equal((await putAccess(app, admin.headers, bad)).status, 400, JSON.stringify(bad));
+  assert.equal((await putAccess(app, admin.headers, valid)).status, 200);
+
+  const status = await (await app.request('/api/thermostat', { headers: user.headers })).json();
+  assert.deepEqual(status.controls, { modes: ['HEAT'], eco: false });
+  assert.equal(status.limits.minCelsius, 17);
+  assert.equal(status.limits.maxCelsius, 23);
+
+  for (const command of [
+    { type: 'mode', mode: 'OFF' },
+    { type: 'cool', coolCelsius: 22 },
+    { type: 'eco', mode: 'MANUAL_ECO' },
+    { type: 'heat', heatCelsius: 26 },
+    { type: 'heat', heatCelsius: 15 },
+  ])
+    assert.equal((await send(app, user.headers, command)).status, 403, JSON.stringify(command));
+  // Allowed user commands and every admin command get past the access check.
+  for (const [headers, command] of [
+    [user.headers, { type: 'heat', heatCelsius: 21 }],
+    [user.headers, { type: 'eco', mode: 'OFF' }],
+    [admin.headers, { type: 'mode', mode: 'OFF' }],
+  ] as const)
+    assert.notEqual((await send(app, headers, command)).status, 403, JSON.stringify(command));
+
+  assert.equal((await putAccess(app, admin.headers, { ...valid, enabled: false })).status, 200);
+  assert.equal((await app.request('/api/thermostat', { headers: user.headers })).status, 403);
+  assert.equal((await send(app, user.headers, { type: 'heat', heatCelsius: 21 })).status, 403);
+  assert.equal((await login(app, config.origin, USER)).response.status, 403);
+  assert.equal((await login(app, config.origin, ADMIN)).response.status, 200);
+});
+
+test('oversized bodies and repeated wrong codes fail safely', async () => {
+  const { app, config } = setup();
+  const headers = { Origin: config.origin, 'Content-Type': 'application/json' };
+  const post = (code: string) =>
+    app.request('/api/login', { method: 'POST', headers, body: JSON.stringify({ code }) });
+  assert.equal((await post('x'.repeat(5000))).status, 413);
+  for (let i = 0; i < 15; i++)
+    assert.equal((await post(USER)).status, 200, 'right codes never count');
+  for (let i = 0; i < 10; i++) await post('wrong');
+  const response = await post('wrong');
   assert.equal(response.status, 429);
   assert.ok(Number(response.headers.get('Retry-After')) > 0);
 });
-test('owner can view setup readiness but Google OAuth stays disabled without configuration', async (t) => {
-  const { app, store, config } = setup(t);
-  const key = store.createKey('owner', 'Owner');
-  const logged = await login(app, config.origin, key.token);
-  const data = await (
-    await app.request('/api/owner/status', { headers: { Cookie: logged.cookie } })
-  ).json();
-  assert.equal(data.googleConfigured, false);
-  assert.equal(data.googleConnected, false);
-  assert.equal(data.accessKeys[0].id, key.id);
-  assert.ok(!JSON.stringify(data).includes(key.token));
-  assert.equal(
-    (
-      await app.request('/api/owner/google/connect', {
-        method: 'POST',
-        headers: {
-          Origin: config.origin,
-          Cookie: logged.cookie,
-          'Content-Type': 'application/json',
-          'X-CSRF-Token': logged.data.csrfToken,
-        },
-        body: '{}',
-      })
-    ).status,
-    503,
-  );
-});
-test('default HTTP service uses only numeric policy and confirms a real mocked command path', async (t) => {
-  const { randomBytes } = await import('node:crypto');
-  const { encryptSecret } = await import('../src/crypto.ts');
-  const { GoogleConnection } = await import('../src/google/connection.ts');
-  const { store } = setup(t);
+
+test('a command goes through Google and is confirmed by a fresh reading', async (t) => {
   const config = readConfig({
-    GOOGLE_CLIENT_ID: 'fake',
-    GOOGLE_CLIENT_SECRET: 'fake',
-    GOOGLE_DEVICE_ACCESS_PROJECT_ID: 'fake',
-    TOKEN_ENCRYPTION_KEY: randomBytes(32).toString('base64'),
+    APP_ORIGIN: 'http://localhost:3000',
+    ADMIN_CODE: ADMIN,
+    GOOGLE_CLIENT_ID: 'id',
+    GOOGLE_CLIENT_SECRET: 'secret',
+    GOOGLE_DEVICE_ACCESS_PROJECT_ID: 'project',
+    GOOGLE_REFRESH_TOKEN: 'refresh',
+    GOOGLE_DEVICE_ID: 'device',
   });
-  store.set(
-    'google-refresh',
-    encryptSecret('fake-refresh', config.encryptionKey!, 'google-refresh'),
-  );
-  store.set('google-device-resource', 'enterprises/fake/devices/fake');
-  const connection = new GoogleConnection(config, store);
-  connection.cached = { token: 'fake-access', expiresAt: Date.now() + 3600000 };
+  const resource = 'enterprises/project/devices/device';
   let heat = 20;
   let writes = 0;
+  let tokenRequests = 0;
   t.mock.method(globalThis, 'fetch', async (input: string, init: RequestInit) => {
+    if (String(input) === 'https://oauth2.googleapis.com/token') {
+      tokenRequests++;
+      assert.match(String(init.body), /refresh_token=refresh/);
+      return Response.json({ access_token: 'access', expires_in: 3600 });
+    }
     assert.ok(
-      String(input).startsWith(
-        'https://smartdevicemanagement.googleapis.com/v1/enterprises/fake/devices/fake',
-      ),
+      String(input).startsWith(`https://smartdevicemanagement.googleapis.com/v1/${resource}`),
     );
     if (init.method === 'POST') {
       writes++;
@@ -187,7 +181,7 @@ test('default HTTP service uses only numeric policy and confirms a real mocked c
     }
     const p = 'sdm.devices.traits.';
     return Response.json({
-      name: 'enterprises/fake/devices/fake',
+      name: resource,
       type: 'sdm.devices.types.THERMOSTAT',
       traits: {
         [p + 'Connectivity']: { status: 'ONLINE' },
@@ -197,174 +191,26 @@ test('default HTTP service uses only numeric policy and confirms a real mocked c
       },
     });
   });
-  const app = createApp({ config, store, connection });
-  const owner = store.createKey('owner', 'Owner');
-  const signed = await login(app, config.origin, owner.token);
-  const headers = {
-    Origin: config.origin,
-    Cookie: signed.cookie,
-    'Content-Type': 'application/json',
-    'X-CSRF-Token': signed.data.csrfToken,
-  };
-  const response = await app.request('/api/commands', {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      requestId: crypto.randomUUID(),
-      command: { type: 'heat', heatCelsius: 22 },
-    }),
-  });
+  const app = createApp({ config, connection: new GoogleConnection(config) });
+  const admin = await login(app, config.origin, ADMIN);
+  const response = await send(app, admin.headers, { type: 'heat', heatCelsius: 22 });
   assert.equal(response.status, 200);
   const result = await response.json();
   assert.equal(result.confirmed, true);
-  assert.equal(writes, 1);
   assert.equal(result.snapshot.heatCelsius, 22);
+  assert.equal(writes, 1);
+  assert.equal(tokenRequests, 1, 'the access token is cached');
 });
-test('first Google connection can start without an already discovered device', async (t) => {
-  const { randomBytes } = await import('node:crypto');
-  const { store } = setup(t);
-  const config = readConfig({
-    GOOGLE_CLIENT_ID: 'fake',
-    GOOGLE_CLIENT_SECRET: 'fake',
-    GOOGLE_DEVICE_ACCESS_PROJECT_ID: 'fake',
-    TOKEN_ENCRYPTION_KEY: randomBytes(32).toString('base64'),
-  });
-  const app = createApp({ config, store });
-  const owner = store.createKey('owner', 'Owner');
-  const signed = await login(app, config.origin, owner.token);
-  const response = await app.request('/api/owner/google/connect', {
-    method: 'POST',
-    headers: {
-      Origin: config.origin,
-      Cookie: signed.cookie,
-      'Content-Type': 'application/json',
-      'X-CSRF-Token': signed.data.csrfToken,
+
+test('if saved access cannot be read, the user is locked out', async () => {
+  const config = readConfig({ ADMIN_CODE: ADMIN, USER_CODE: USER });
+  const broken = {
+    get: async () => {
+      throw new Error('storage down');
     },
-    body: '{}',
-  });
-  assert.equal(response.status, 200);
-  assert.equal(new URL((await response.json()).url).hostname, 'nestservices.google.com');
-});
-test('owner creates and revokes guest keys in the app; guests and owner keys are protected', async (t) => {
-  const { app, store, config } = setup(t);
-  const owner = store.createKey('owner', 'Owner');
-  const signed = await login(app, config.origin, owner.token);
-  const headers = {
-    Origin: config.origin,
-    'Content-Type': 'application/json',
-    Cookie: signed.cookie,
-    'X-CSRF-Token': signed.data.csrfToken,
+    set: async () => {},
   };
-  const post = (body: unknown, h: Record<string, string> = headers) =>
-    app.request('/api/owner/keys', { method: 'POST', headers: h, body: JSON.stringify(body) });
-  for (const bad of [
-    { label: '', days: 7 },
-    { label: 'x', days: 0 },
-    { label: 'x', days: 366 },
-    { label: 'x', days: 1.5 },
-    { label: 'x'.repeat(81), days: 7 },
-    { label: 'x', days: 7, role: 'owner' },
-  ])
-    assert.equal((await post(bad)).status, 400);
-  const created = await post({ label: 'Sam', days: 7 });
-  assert.equal(created.status, 201);
-  const guest = await created.json();
-  assert.match(guest.token, /^nt_/);
-  assert.equal(guest.role, 'neighbor');
-  assert.ok(guest.expiresAt > Date.now() + 6 * 86_400_000);
-
-  const guestLogin = await login(app, config.origin, guest.token);
-  const guestHeaders = {
-    ...headers,
-    Cookie: guestLogin.cookie,
-    'X-CSRF-Token': guestLogin.data.csrfToken,
-  };
-  assert.equal((await post({ label: 'Other', days: 7 }, guestHeaders)).status, 403);
-  assert.equal(
-    (
-      await app.request(`/api/owner/keys/${guest.id}`, {
-        method: 'DELETE',
-        headers: guestHeaders,
-        body: '{}',
-      })
-    ).status,
-    403,
-  );
-  const noCsrf = { ...headers, 'X-CSRF-Token': '' };
-  assert.equal((await post({ label: 'Other', days: 7 }, noCsrf)).status, 403);
-
-  assert.equal(
-    (await app.request(`/api/owner/keys/${owner.id}`, { method: 'DELETE', headers, body: '{}' }))
-      .status,
-    404,
-  );
-  assert.equal(
-    (await app.request(`/api/owner/keys/${guest.id}`, { method: 'DELETE', headers, body: '{}' }))
-      .status,
-    200,
-  );
-  assert.equal(
-    (await app.request('/api/thermostat', { headers: { Cookie: guestLogin.cookie } })).status,
-    401,
-  );
-  assert.ok(store.hasOwner());
-});
-test('owner-set guest controls are enforced on the server for guests only', async (t) => {
-  const { app, store, config } = setup(t);
-  const owner = store.createKey('owner', 'Owner');
-  const guest = store.createKey('neighbor', 'Guest', Date.now() + 86_400_000);
-  const as = async (token: string) => {
-    const signed = await login(app, config.origin, token);
-    return {
-      Origin: config.origin,
-      'Content-Type': 'application/json',
-      Cookie: signed.cookie,
-      'X-CSRF-Token': signed.data.csrfToken,
-    };
-  };
-  const ownerHeaders = await as(owner.token);
-  const guestHeaders = await as(guest.token);
-  const put = (body: unknown, headers: Record<string, string>) =>
-    app.request('/api/owner/controls', { method: 'PUT', headers, body: JSON.stringify(body) });
-  const send = (command: unknown, headers: Record<string, string>) =>
-    app.request('/api/commands', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ requestId: crypto.randomUUID(), command }),
-    });
-
-  for (const bad of [
-    { modes: ['HEAT', 'FAN'], eco: true },
-    { modes: ['HEAT', 'HEAT'], eco: true },
-    { modes: 'HEAT', eco: true },
-    { modes: ['HEAT'], eco: 'yes' },
-    { modes: ['HEAT'], eco: true, extra: 1 },
-  ])
-    assert.equal((await put(bad, ownerHeaders)).status, 400);
-  assert.equal((await put({ modes: ['COOL'], eco: false }, guestHeaders)).status, 403);
-  assert.equal((await put({ modes: ['OFF', 'COOL'], eco: false }, ownerHeaders)).status, 200);
-
-  const status = await (
-    await app.request('/api/thermostat', { headers: { Cookie: guestHeaders.Cookie } })
-  ).json();
-  assert.deepEqual(status.controls, { modes: ['COOL', 'OFF'], eco: false });
-
-  for (const command of [
-    { type: 'mode', mode: 'HEAT' },
-    { type: 'mode', mode: 'HEATCOOL' },
-    { type: 'heat', heatCelsius: 21 },
-    { type: 'range', heatCelsius: 20, coolCelsius: 24 },
-    { type: 'eco', mode: 'MANUAL_ECO' },
-  ]) {
-    const response = await send(command, guestHeaders);
-    assert.equal(response.status, 403, JSON.stringify(command));
-    assert.match((await response.json()).message, /owner has turned/);
-  }
-  // Allowed guest commands and every owner command reach the thermostat service (not refused here).
-  for (const [command, headers] of [
-    [{ type: 'mode', mode: 'COOL' }, guestHeaders],
-    [{ type: 'eco', mode: 'OFF' }, guestHeaders],
-    [{ type: 'mode', mode: 'HEAT' }, ownerHeaders],
-  ] as const)
-    assert.notEqual((await send(command, headers)).status, 403, JSON.stringify(command));
+  const app = createApp({ config, access: broken });
+  assert.equal((await login(app, config.origin, USER)).response.status, 403);
+  assert.equal((await login(app, config.origin, ADMIN)).response.status, 200);
 });

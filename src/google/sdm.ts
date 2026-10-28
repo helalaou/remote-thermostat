@@ -96,10 +96,10 @@ export class SdmClient {
     try {
       token = await this.#accessToken();
     } catch {
-      throw new GoogleApiError('REAUTH_REQUIRED', 'The owner needs to reconnect Google Nest.');
+      throw new GoogleApiError('REAUTH_REQUIRED', 'The admin needs to reconnect Google Nest.');
     }
     if (typeof token !== 'string' || token.length < 1 || /[\r\n]/.test(token)) {
-      throw new GoogleApiError('REAUTH_REQUIRED', 'The owner needs to reconnect Google Nest.');
+      throw new GoogleApiError('REAUTH_REQUIRED', 'The admin needs to reconnect Google Nest.');
     }
     if (method === 'POST' && !authorized())
       throw new GoogleApiError(
@@ -152,7 +152,7 @@ export class SdmClient {
       if (upstreamStatus === 401 || upstreamStatus === 403)
         throw new GoogleApiError(
           'REAUTH_REQUIRED',
-          'The owner needs to check the Google Nest connection and permissions.',
+          'The admin needs to check the Google Nest connection and permissions.',
           { upstreamStatus },
         );
       if (upstreamStatus === 400 || upstreamStatus === 409 || upstreamStatus === 412)
@@ -164,7 +164,7 @@ export class SdmClient {
       if (upstreamStatus === 404)
         throw new GoogleApiError(
           'DEVICE_NOT_FOUND',
-          'The configured thermostat is no longer available. Ask the owner to check its connection.',
+          'The configured thermostat is no longer available. Ask the admin to check its connection.',
           { upstreamStatus },
         );
       const outcomeUnknown = method === 'POST' && upstreamStatus >= 500;

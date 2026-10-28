@@ -109,35 +109,40 @@
         <p id="eco-readings" class="muted small" hidden></p>
       </section>
 
-      <section id="owner-card" class="card" aria-labelledby="owner-title" hidden>
-        <h2 id="owner-title">Access</h2>
-        <div id="access-list" class="access-list"></div>
-        <form id="key-form" class="inline">
-          <label class="sr-only" for="key-label">Name</label
-          ><input id="key-label" maxlength="80" placeholder="Name" required autocomplete="off" />
-          <label class="sr-only" for="key-days">Expires</label
-          ><select id="key-days">
-            <option value="1">1 day</option>
-            <option value="7">7 days</option>
-            <option value="30" selected>30 days</option>
-            <option value="90">90 days</option>
-            <option value="365">1 year</option></select
-          ><button id="key-create" type="submit">Add</button>
-        </form>
-        <div id="key-created" class="key-created" hidden>
-          <p class="small">Copy this key now. It won't be shown again.</p>
-          <div class="inline">
-            <input id="key-token" readonly aria-label="New access key" /><button
-              id="key-copy"
-              type="button"
-            >
-              Copy
-            </button>
-          </div>
+      <section id="admin-card" class="card" aria-labelledby="admin-title" hidden>
+        <div class="row">
+          <h2 id="admin-title">User access</h2>
+          <input id="user-enabled" type="checkbox" class="switch" aria-label="User access on" />
         </div>
-        <h2>Google Nest</h2>
-        <p id="owner-description" class="muted small"></p>
-        <button id="google-connect" type="button" disabled>Connect Google Nest</button>
+        <fieldset class="setting-group">
+          <legend>Modes</legend>
+          <label><input type="checkbox" data-mode-choice="HEAT" /> Heat</label>
+          <label><input type="checkbox" data-mode-choice="COOL" /> Cool</label>
+          <label><input type="checkbox" data-mode-choice="HEATCOOL" /> Heat/Cool</label>
+          <label><input type="checkbox" data-mode-choice="OFF" /> Off</label>
+          <label><input id="user-eco" type="checkbox" /> Eco</label>
+        </fieldset>
+        <div class="range">
+          <label
+            >Lowest
+            <span
+              ><input id="user-min" type="number" inputmode="decimal" step="0.5" /><span
+                class="admin-unit"
+                >°C</span
+              ></span
+            ></label
+          >
+          <label
+            >Highest
+            <span
+              ><input id="user-max" type="number" inputmode="decimal" step="0.5" /><span
+                class="admin-unit"
+                >°C</span
+              ></span
+            ></label
+          >
+        </div>
+        <p id="admin-status" class="muted small"></p>
       </section>
     </main>
 
@@ -162,14 +167,6 @@
             ><button id="unit-f" type="button" aria-pressed="false">°F</button>
           </div>
         </div>
-        <fieldset id="guest-controls" class="setting-group" hidden>
-          <legend>Guests can use</legend>
-          <label><input type="checkbox" data-mode-choice="HEAT" /> Heat</label>
-          <label><input type="checkbox" data-mode-choice="COOL" /> Cool</label>
-          <label><input type="checkbox" data-mode-choice="HEATCOOL" /> Heat/Cool</label>
-          <label><input type="checkbox" data-mode-choice="OFF" /> Off</label>
-          <label><input id="show-eco" type="checkbox" /> Eco</label>
-        </fieldset>
       </div>
     </dialog>
     <dialog id="login-dialog" aria-labelledby="login-title">
@@ -178,7 +175,7 @@
           <h2 id="login-title">Sign in</h2>
           <button class="close" id="login-close" type="button" aria-label="Close">×</button>
         </div>
-        <label for="access-key">Access key</label
+        <label for="access-key">Code</label
         ><input
           id="access-key"
           type="password"

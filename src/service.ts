@@ -65,11 +65,7 @@ export class ThermostatService {
   private async read(fresh = false): Promise<ThermostatSnapshot> {
     const client = this.client();
     if (!client)
-      throw new CommandValidationError(
-        'NOT_CONNECTED',
-        'The owner has not connected Google Nest yet.',
-        503,
-      );
+      throw new CommandValidationError('NOT_CONNECTED', 'Google Nest is not connected.', 503);
     if (
       !fresh &&
       this.snapshot &&
@@ -232,7 +228,7 @@ export class ThermostatService {
       if (client !== initialClient)
         throw new CommandValidationError(
           'CONNECTION_CHANGED',
-          'The owner changed the connection. Refresh before trying again.',
+          'The connection changed. Refresh before trying again.',
           409,
         );
       if (!client)

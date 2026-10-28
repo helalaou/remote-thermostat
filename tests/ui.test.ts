@@ -74,7 +74,7 @@ function normalHandler(path: string) {
   if (path === '/api/session')
     return response({
       authenticated: true,
-      role: 'neighbor',
+      role: 'user',
       csrfToken: 'test-csrf',
       configured: true,
     });
@@ -106,7 +106,7 @@ test('demo commands never reach the server', async (t) => {
 test('disconnected state never invents a live temperature', async (t) => {
   const app = createUI((path) =>
     path === '/api/session'
-      ? response({ authenticated: true, role: 'neighbor', csrfToken: 'test', configured: true })
+      ? response({ authenticated: true, role: 'user', csrfToken: 'test', configured: true })
       : response({ connected: false, stale: false, limits }),
   );
   t.after(app.close);
@@ -177,7 +177,7 @@ test('late session response cannot switch a demo into an authenticated view', as
   t.after(app.close);
   app.ui.enterDemo();
   session.resolve(
-    response({ authenticated: true, role: 'owner', csrfToken: 'old', configured: true }),
+    response({ authenticated: true, role: 'admin', csrfToken: 'old', configured: true }),
   );
   await settle();
   assert.equal(app.ui.state.demo, true);
@@ -192,7 +192,7 @@ test('late login response cannot overwrite a newer demo transition', async (t) =
   );
   t.after(app.close);
   await settle();
-  app.el<HTMLInputElement>('access-key').value = 'a-test-only-access-key';
+  app.el<HTMLInputElement>('access-key').value = 'a-test-only-code';
   app
     .el('login-form')
     .dispatchEvent(new app.window.Event('submit', { bubbles: true, cancelable: true }));
@@ -234,35 +234,6 @@ test('a freshly changed target invalidates a pending confirmation', async (t) =>
   assert.equal(app.el<HTMLDialogElement>('confirm-dialog').open, false);
   assert.equal(app.calls.includes('/api/commands'), false);
 });
-
-for (const connected of [false, true]) {
-  test(`owner can ${connected ? 'reconnect an existing grant' : 'start Google setup without a selected device'}`, async (t) => {
-    const app = createUI((path) => {
-      if (path === '/api/session')
-        return response({
-          authenticated: true,
-          role: 'owner',
-          csrfToken: 'test',
-          configured: true,
-        });
-      if (path === '/api/owner/status')
-        return response({
-          googleConfigured: true,
-          googleConnected: connected,
-          deviceConfigured: false,
-          accessKeys: [],
-        });
-      return response({ connected: false, stale: false, limits });
-    });
-    t.after(app.close);
-    await settle();
-    assert.equal(app.el<HTMLButtonElement>('google-connect').disabled, false);
-    assert.equal(
-      app.el('google-connect').textContent,
-      connected ? 'Reconnect Google Nest' : 'Connect Google Nest',
-    );
-  });
-}
 
 test('automatic refresh runs every 30 seconds only while visible, with no overlap', async (t) => {
   const app = createUI(normalHandler);
@@ -306,7 +277,7 @@ test('theme setting applies and persists per browser', async (t) => {
   await settle();
   app.el<HTMLButtonElement>('settings-open').click();
   assert.equal(app.el<HTMLDialogElement>('settings-dialog').open, true);
-  assert.equal(app.el<HTMLElement>('guest-controls').hidden, true, 'guests cannot edit access');
+  assert.equal(app.el<HTMLElement>('admin-card').hidden, true, 'the user has no admin panel');
   app.window.document.querySelector<HTMLButtonElement>('[data-theme-choice="dark"]')!.click();
   assert.equal(app.window.document.documentElement.dataset.theme, 'dark');
   assert.equal(
@@ -316,7 +287,7 @@ test('theme setting applies and persists per browser', async (t) => {
   app.window.document.querySelector<HTMLButtonElement>('[data-theme-choice="system"]')!.click();
   assert.equal(app.window.document.documentElement.dataset.theme, undefined);
 });
-test('guests see only owner-allowed modes and Eco, keeping the active mode visible but locked', async (t) => {
+test('the user sees only allowed modes and Eco, keeping the active mode visible but locked', async (t) => {
   const app = createUI((path) => {
     if (path === '/api/thermostat')
       return response({
@@ -339,44 +310,60 @@ test('guests see only owner-allowed modes and Eco, keeping the active mode visib
     ['Heat', 'Cool', 'Off'],
   );
   assert.equal(app.ui.setpointEditable(), false, 'HEAT is active but not allowed');
-  assert.equal(app.el('stepper-hint').textContent, 'Locked by owner');
+  assert.equal(app.el('stepper-hint').textContent, 'Locked by admin');
   assert.equal(app.el<HTMLElement>('eco-controls').hidden, true);
 });
-test('owner edits guest access through the server', async (t) => {
+test('admin edits user access through the server and stays unrestricted', async (t) => {
   const puts: unknown[] = [];
+  const access = {
+    enabled: true,
+    modes: ['HEAT', 'COOL', 'HEATCOOL', 'OFF'],
+    eco: true,
+    minCelsius: 10,
+    maxCelsius: 30,
+  };
   const app = createUI((path, options) => {
     if (path === '/api/session')
-      return response({ authenticated: true, role: 'owner', csrfToken: 'c', configured: true });
-    if (path === '/api/owner/status')
-      return response({ googleConfigured: true, googleConnected: true, accessKeys: [] });
-    if (path === '/api/owner/controls') {
-      const body = JSON.parse(options!.body as string);
-      puts.push(body);
-      return response(body);
+      return response({ authenticated: true, role: 'admin', csrfToken: 'c', configured: true });
+    if (path === '/api/admin/access') {
+      if (options?.method === 'PUT') {
+        const body = JSON.parse(options.body as string);
+        puts.push(body);
+        return response(body);
+      }
+      return response({ access, userCodeSet: true, googleConnected: true });
     }
     return normalHandler(path);
   });
   t.after(app.close);
   await settle();
-  app.el<HTMLButtonElement>('settings-open').click();
-  assert.equal(app.el<HTMLElement>('guest-controls').hidden, false);
+  assert.equal(app.el<HTMLElement>('admin-card').hidden, false);
+  assert.equal(app.el<HTMLInputElement>('user-max').value, '30');
   const off = app.window.document.querySelector<HTMLInputElement>('[data-mode-choice="OFF"]')!;
   off.checked = false;
   off.dispatchEvent(new app.window.Event('change'));
+  const max = app.el<HTMLInputElement>('user-max');
+  max.value = '24';
+  max.dispatchEvent(new app.window.Event('change'));
   await settle();
-  assert.deepEqual(puts, [{ modes: ['HEAT', 'COOL', 'HEATCOOL'], eco: true }]);
-  // The owner is never restricted, so Off still shows for them.
+  assert.deepEqual(puts.at(-1), {
+    ...access,
+    modes: ['HEAT', 'COOL', 'HEATCOOL'],
+    maxCelsius: 24,
+  });
+  // The admin is never restricted, so Off still shows for them.
   assert.ok(
     [...app.el('mode-buttons').querySelectorAll('button')].some((b) => b.textContent === 'Off'),
   );
 });
-test('demo previews guest access locally', async (t) => {
+test('demo previews user access locally', async (t) => {
   const app = createUI(normalHandler);
   t.after(app.close);
   await settle();
   app.ui.enterDemo();
   assert.equal(app.el<HTMLElement>('eco-controls').hidden, false);
-  const eco = app.el<HTMLInputElement>('show-eco');
+  assert.equal(app.el<HTMLElement>('admin-card').hidden, false);
+  const eco = app.el<HTMLInputElement>('user-eco');
   eco.checked = false;
   eco.dispatchEvent(new app.window.Event('change'));
   assert.equal(app.el<HTMLElement>('eco-controls').hidden, true);

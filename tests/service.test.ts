@@ -1,8 +1,5 @@
 import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { Store } from '../src/store.ts';
 import { ThermostatService, type DeviceClient } from '../src/service.ts';
@@ -25,13 +22,8 @@ function snapshot(mode = 'HEAT', heat = 20) {
     resource,
   );
 }
-function setup(t: TestContext, client: DeviceClient | null) {
-  const path = mkdtempSync(join(tmpdir(), 'nest-service-'));
-  const store = new Store(path);
-  t.after(() => {
-    store.close();
-    rmSync(path, { recursive: true, force: true });
-  });
+function setup(_t: TestContext, client: DeviceClient | null) {
+  const store = new Store();
   return { store, service: new ThermostatService({ store, client: () => client, policy: {} }) };
 }
 test('multiple viewers share one cache and one in-flight read', async (t) => {
@@ -63,7 +55,7 @@ test('fresh device state rejects old UI heat request after mode changes', async 
   await service.status();
   state = snapshot('OFF');
   const response = await service.command(
-    'guest',
+    'user',
     randomUUID(),
     { type: 'heat', heatCelsius: 22 },
     () => true,
@@ -84,21 +76,21 @@ test('accepted commands only confirm matching readback; replay never sends twice
   const { service } = setup(t, client);
   const id = randomUUID();
   const input = { type: 'heat', heatCelsius: 22 };
-  const response = await service.command('guest', id, input, () => true);
+  const response = await service.command('user', id, input, () => true);
   assert.equal(response.body.confirmed, true);
   assert.equal(writes, 1);
-  assert.deepEqual(await service.command('guest', id, input, () => true), response);
+  assert.deepEqual(await service.command('user', id, input, () => true), response);
   assert.equal(writes, 1);
   await assert.rejects(() => service.command('other', id, input, () => true), /already been used/);
   await assert.rejects(
-    () => service.command('guest', id, { type: 'heat', heatCelsius: 23 }, () => true),
+    () => service.command('user', id, { type: 'heat', heatCelsius: 23 }, () => true),
     /already been used/,
   );
 });
 test('empty Google acceptance is not false success', async (t) => {
   const { service } = setup(t, { getDevice: async () => snapshot(), execute: async () => ({}) });
   const result = await service.command(
-    'guest',
+    'user',
     randomUUID(),
     { type: 'heat', heatCelsius: 22 },
     () => true,
@@ -117,9 +109,9 @@ test('timeout is uncertain and cannot be replayed into another command', async (
   });
   const id = randomUUID();
   const command = { type: 'heat', heatCelsius: 22 };
-  const result = await service.command('guest', id, command, () => true);
+  const result = await service.command('user', id, command, () => true);
   assert.equal(result.body.outcomeUnknown, true);
-  await service.command('guest', id, command, () => true);
+  await service.command('user', id, command, () => true);
   assert.equal(writes, 1);
 });
 test('simultaneous writes are rejected and revoked session is checked again after read', async (t) => {
@@ -138,13 +130,13 @@ test('simultaneous writes are rejected and revoked session is checked again afte
     },
   });
   const first = service.command(
-    'guest',
+    'user',
     randomUUID(),
     { type: 'heat', heatCelsius: 22 },
     () => allowed,
   );
   await assert.rejects(
-    () => service.command('guest', randomUUID(), { type: 'heat', heatCelsius: 23 }, () => true),
+    () => service.command('user', randomUUID(), { type: 'heat', heatCelsius: 23 }, () => true),
     /in progress/,
   );
   allowed = false;
@@ -182,7 +174,7 @@ test('hourly command quota includes every command type and prevents dispatch', a
   for (let i = 0; i < 100; i++)
     store.reserve('google-commands', [{ max: 100, windowMs: 3_600_000 }], Date.now() - 120_000 + i);
   const result = await service.command(
-    'guest',
+    'user',
     randomUUID(),
     { type: 'mode', mode: 'OFF' },
     () => true,
@@ -193,13 +185,12 @@ test('hourly command quota includes every command type and prevents dispatch', a
 test('application attempts are bounded before request/audit persistence, while replay remains free', async (t) => {
   const { service, store } = setup(t, null);
   for (let i = 0; i < 20; i++)
-    await service.command('guest', randomUUID(), { type: 'heat', heatCelsius: 22 }, () => true);
+    await service.command('user', randomUUID(), { type: 'heat', heatCelsius: 22 }, () => true);
   await assert.rejects(
-    () => service.command('guest', randomUUID(), { type: 'heat', heatCelsius: 22 }, () => true),
+    () => service.command('user', randomUUID(), { type: 'heat', heatCelsius: 22 }, () => true),
     /Too many/,
   );
-  const count = store.db.prepare('SELECT count(*) AS n FROM requests').get() as { n: number };
-  assert.equal(count.n, 20);
+  assert.equal(store.requests.size, 20);
 });
 test('a reset during read never publishes the previous connection snapshot', async (t) => {
   let release: () => void = () => {};
@@ -228,7 +219,7 @@ test('status remains stale while an earlier command can still reach the thermost
         release = r;
       }),
   });
-  const pending = service.command('guest', randomUUID(), { type: 'mode', mode: 'OFF' }, () => true);
+  const pending = service.command('user', randomUUID(), { type: 'mode', mode: 'OFF' }, () => true);
   await new Promise((r) => setTimeout(r, 0));
   const status = await service.status();
   assert.equal(status.stale, true);
@@ -242,7 +233,7 @@ test('a persistence failure cannot leave the in-process command lock stuck', asy
     throw new Error('disk full');
   });
   await assert.rejects(() =>
-    service.command('guest', randomUUID(), { type: 'mode', mode: 'OFF' }, () => true),
+    service.command('user', randomUUID(), { type: 'mode', mode: 'OFF' }, () => true),
   );
   assert.equal(service.busy, false);
 });
@@ -260,7 +251,7 @@ test('reconnecting during token acquisition invalidates the final dispatch guard
       sent = true;
     },
   });
-  const pending = service.command('guest', randomUUID(), { type: 'mode', mode: 'OFF' }, () => true);
+  const pending = service.command('user', randomUUID(), { type: 'mode', mode: 'OFF' }, () => true);
   await new Promise((r) => setTimeout(r, 0));
   service.reset();
   release();

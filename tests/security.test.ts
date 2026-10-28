@@ -1,83 +1,53 @@
-import test, { type TestContext } from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { randomBytes } from 'node:crypto';
-import { Store, RateLimitError } from '../src/store.ts';
 import { readConfig } from '../src/config.ts';
-import { encryptSecret, decryptSecret } from '../src/crypto.ts';
-function setup(t: TestContext) {
-  const path = mkdtempSync(join(tmpdir(), 'neighbor-test-'));
-  const store = new Store(path);
-  t.after(() => {
-    store.close();
-    rmSync(path, { recursive: true, force: true });
-  });
-  return store;
-}
-test('configuration requires HTTPS outside loopback and validates policy/key', () => {
-  assert.throws(() => readConfig({ APP_ORIGIN: 'http://example.com' }));
-  assert.throws(() => readConfig({ APP_ORIGIN: 'https://example.com/a' }));
-  assert.throws(() => readConfig({ TOKEN_ENCRYPTION_KEY: 'bad' }));
-  assert.throws(() => readConfig({ TEMPERATURE_MIN_C: 'NaN' }));
-  assert.equal(readConfig({ APP_ORIGIN: 'https://example.com' }).secureCookies, true);
+import { codeMatches, createSession, readSession } from '../src/crypto.ts';
+import { Store, RateLimitError } from '../src/store.ts';
+
+const ADMIN = 'correct-horse-battery-staple';
+const codes = { admin: ADMIN, user: 'prancer' };
+
+test('config requires HTTPS outside localhost and a strong, distinct admin code', () => {
+  assert.throws(() => readConfig({ APP_ORIGIN: 'http://example.com' }), /HTTPS/);
+  assert.equal(readConfig({ URL: 'https://site.netlify.app' }).origin, 'https://site.netlify.app');
+  assert.throws(() => readConfig({ ADMIN_CODE: 'short' }), /12 characters/);
+  assert.throws(() => readConfig({ ADMIN_CODE: ADMIN, USER_CODE: ADMIN }), /different/);
+  assert.throws(() => readConfig({ USER_CODE: 'prancer' }), /ADMIN_CODE/);
+  assert.throws(() => readConfig({ TEMPERATURE_MIN_C: '2' }), /5–35/);
+  assert.throws(() => readConfig({ GOOGLE_DEVICE_ID: '../other' }), /invalid characters/);
+  const config = readConfig({ ADMIN_CODE: ADMIN, USER_CODE: 'prancer' });
+  assert.notEqual(config.sessionSecret, readConfig({ ADMIN_CODE: `${ADMIN}!` }).sessionSecret);
 });
-test('no owner bootstrap; hashed keys, sessions and immediate revocation', (t) => {
-  const store = setup(t);
-  assert.equal(store.hasOwner(), false);
-  const owner = store.createKey('owner', 'Owner');
-  assert.equal(store.hasOwner(), true);
-  assert.throws(() => store.createKey('owner', 'Takeover'));
-  assert.equal(store.login('password'), null);
-  const logged = store.login(owner.token)!;
-  assert.equal(store.session(logged.token)?.role, 'owner');
-  assert.equal(
-    JSON.stringify(store.db.prepare('SELECT * FROM access_keys').all()).includes(owner.token),
-    false,
-  );
-  store.revokeKey(owner.id);
-  assert.equal(store.session(logged.token), null);
-  assert.equal(store.login(owner.token), null);
+
+test('signed sessions reject tampering, expiry, role swaps and changed codes', () => {
+  const secret = 'test-secret';
+  const now = Date.now();
+  const cookie = createSession(secret, 'user', 'prancer', now);
+  assert.equal(readSession(secret, cookie, codes, now)?.role, 'user');
+  assert.equal(readSession('other-secret', cookie, codes, now), null);
+  assert.equal(readSession(secret, cookie.replace(/^user/, 'admin'), codes, now), null);
+  assert.equal(readSession(secret, `${cookie}x`, codes, now), null);
+  assert.equal(readSession(secret, cookie, codes, now + 31 * 86_400_000), null, 'expired');
+  assert.equal(readSession(secret, cookie, { ...codes, user: 'new-code' }, now), null);
+  assert.equal(readSession(secret, cookie, { ...codes, user: undefined }, now), null);
+  assert.equal(readSession(secret, undefined, codes, now), null);
+  const first = readSession(secret, cookie, codes, now)!;
+  const other = readSession(secret, createSession(secret, 'user', 'prancer', now + 1), codes, now)!;
+  assert.notEqual(first.csrfToken, other.csrfToken, 'CSRF token is bound to the session');
 });
-test('expiry invalidates an existing session', (t) => {
-  const store = setup(t);
-  const key = store.createKey('neighbor', 'Guest', 2000, 1000);
-  const logged = store.login(key.token, 1500)!;
-  assert.ok(store.session(logged.token, 1999));
-  assert.equal(store.session(logged.token, 2000), null);
+
+test('code comparison is exact and never matches an unset code', () => {
+  assert.equal(codeMatches('s', 'prancer', 'prancer'), true);
+  assert.equal(codeMatches('s', 'Prancer', 'prancer'), false);
+  assert.equal(codeMatches('s', 'prance', 'prancer'), false);
+  assert.equal(codeMatches('s', '', undefined), false);
 });
-test('OAuth state is bound to session, one-use and expires', (t) => {
-  const store = setup(t);
-  const state = store.createOAuthState('session-a', 'verifier', 1000);
-  assert.equal(store.consumeOAuthState(state, 'session-b', 1100), null);
-  assert.equal(store.consumeOAuthState(state, 'session-a', 1100), 'verifier');
-  assert.equal(store.consumeOAuthState(state, 'session-a', 1100), null);
-  const expired = store.createOAuthState('a', 'b', 1000);
-  assert.equal(store.consumeOAuthState(expired, 'a', 601001), null);
-});
-test('sliding-window quota is atomic and persists across store instances', (t) => {
-  const store = setup(t);
-  for (let i = 0; i < 5; i++)
-    store.reserve(
-      'commands',
-      [
-        { max: 5, windowMs: 60000 },
-        { max: 100, windowMs: 3600000 },
-      ],
-      1000 + i,
-    );
-  assert.throws(
-    () => store.reserve('commands', [{ max: 5, windowMs: 60000 }], 1005),
-    RateLimitError,
-  );
-  assert.doesNotThrow(() => store.reserve('commands', [{ max: 5, windowMs: 60000 }], 61001));
-});
-test('encrypted secrets reject wrong key, tampering and swapped names', () => {
-  const key = randomBytes(32);
-  const value = encryptSecret('refresh-token', key, 'google');
-  assert.equal(decryptSecret(value, key, 'google'), 'refresh-token');
-  assert.ok(!value.includes('refresh-token'));
-  assert.throws(() => decryptSecret(value, randomBytes(32), 'google'));
-  assert.throws(() => decryptSecret(value, key, 'other'));
+
+test('rate limits use a sliding window', () => {
+  const store = new Store();
+  const limits = [{ max: 2, windowMs: 1000 }];
+  store.reserve('x', limits, 0);
+  store.reserve('x', limits, 100);
+  assert.throws(() => store.reserve('x', limits, 200), RateLimitError);
+  store.reserve('x', limits, 1001);
 });

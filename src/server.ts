@@ -1,25 +1,24 @@
+// Local server: the API plus the files in public/. Netlify uses netlify/functions/api.ts instead.
 import { serve } from '@hono/node-server';
+import { serveStatic } from '@hono/node-server/serve-static';
+import { Hono } from 'hono';
 import { readConfig } from './config.ts';
-import { Store } from './store.ts';
 import { createApp } from './app.ts';
+import { fileAccessStore } from './controls.ts';
 
 const config = readConfig();
-const store = new Store(config.dataDir);
-const app = createApp({ config, store });
+const api = createApp({ config, access: fileAccessStore(config.dataDir) });
+const app = new Hono();
+app.use('/*', serveStatic({ root: './public' }));
+app.route('/', api);
+
 const server = serve({ fetch: app.fetch, port: config.port, hostname: config.host }, () => {
-  console.log(
-    `Remote Thermostat listening at ${config.origin}. Google connection is ${store.get('google-refresh') ? 'configured' : 'not connected'}.`,
-  );
+  console.log(`Remote Thermostat running at ${config.origin}`);
+  if (!config.adminCode) console.log('Set ADMIN_CODE in .env to sign in.');
 });
-const maintenance = setInterval(() => store.prune(), 3_600_000);
-maintenance.unref();
 function shutdown() {
-  clearInterval(maintenance);
-  server.close(() => {
-    store.close();
-    process.exit(0);
-  });
-  setTimeout(() => process.exit(1), 10_000).unref();
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(1), 5_000).unref();
 }
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);

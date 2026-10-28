@@ -4,7 +4,7 @@ const modeNames = { HEAT: 'Heat', COOL: 'Cool', HEATCOOL: 'Heat/Cool', OFF: 'Off
 const fallbackLimits = { minCelsius: 10, maxCelsius: 30, minRangeGapCelsius: 1.5 };
 const SETTINGS_KEY = 'remote-thermostat-settings';
 const ALL_MODES = ['HEAT', 'COOL', 'HEATCOOL', 'OFF'];
-// Theme and units are per-browser. Guest mode/Eco access is set by the owner on the server.
+// Theme and units are per-browser. What the user code can do is set by the admin on the server.
 const settings = { theme: 'system', unit: 'C' };
 try {
   const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
@@ -27,7 +27,7 @@ const state = {
   loading: false,
   demo: false,
   pollTimer: null,
-  owner: null,
+  admin: null,
   controls: { modes: [...ALL_MODES], eco: true },
   pendingCommand: null,
   confirmTimer: null,
@@ -84,16 +84,11 @@ function transitionView() {
   dismissConfirmation();
   return state.generation;
 }
-function clearCreatedKey() {
-  $('key-token').value = '';
-  $('key-created').hidden = true;
-}
 function lockSession() {
-  clearCreatedKey();
   state.session = { authenticated: false, configured: state.session.configured };
   state.connected = false;
   state.snapshot = null;
-  state.owner = null;
+  state.admin = null;
   resetDraft();
 }
 function validateConfirmation() {
@@ -165,12 +160,12 @@ function canControl() {
     !state.loading,
   );
 }
-// The demo previews the guest view so the owner's restrictions can be tried out.
-function guestView() {
-  return state.demo || state.session.role !== 'owner';
+// The demo previews the user's view, so admin restrictions can be tried out.
+function userView() {
+  return state.demo || state.session.role !== 'admin';
 }
 function modeAllowed(mode) {
-  return !guestView() || state.controls.modes.includes(mode);
+  return !userView() || state.controls.modes.includes(mode);
 }
 function setpointEditable() {
   const s = state.snapshot;
@@ -206,9 +201,9 @@ function render() {
     state.demo
       ? 'Demo'
       : state.session.authenticated
-        ? state.session.role === 'owner'
-          ? 'Owner'
-          : state.session.label || 'Guest'
+        ? state.session.role === 'admin'
+          ? 'Admin'
+          : ''
         : '',
   );
   $('login-open').hidden = state.session.authenticated;
@@ -296,7 +291,7 @@ function render() {
     editable
       ? `${temperatureText(state.limits.minCelsius)}–${temperatureText(state.limits.maxCelsius)}`
       : canControl() && s?.hasSetpoint && !modeAllowed(s.mode)
-        ? 'Locked by owner'
+        ? 'Locked by admin'
         : '',
   );
   for (const [id, field] of [
@@ -350,7 +345,7 @@ function render() {
   const hasEco = Boolean(
     s?.availableEcoModes?.includes('MANUAL_ECO') && s.availableEcoModes.includes('OFF'),
   );
-  $('eco-controls').hidden = !hasEco || (guestView() && !state.controls.eco && !eco);
+  $('eco-controls').hidden = !hasEco || (userView() && !state.controls.eco && !eco);
   $('eco-toggle').disabled = !canControl();
   $('eco-toggle').setAttribute('aria-pressed', String(eco));
   $('eco-toggle').setAttribute('aria-label', eco ? 'Turn Eco off' : 'Turn Eco on');
@@ -360,9 +355,8 @@ function render() {
     'eco-readings',
     `Eco range ${temperatureText(s?.ecoHeatCelsius)}–${temperatureText(s?.ecoCoolCelsius)}`,
   );
-  $('owner-card').hidden = state.session.role !== 'owner' || state.demo;
-  $('guest-controls').hidden = !state.demo && state.session.role !== 'owner';
-  $('google-connect').disabled = state.busy || !state.owner?.googleConfigured;
+  $('admin-card').hidden = !state.admin || (!state.demo && state.session.role !== 'admin');
+  fillAdmin();
   $('main').classList.toggle('is-busy', state.busy);
 }
 
@@ -427,14 +421,12 @@ async function refreshSession() {
     state.session = session;
     if (!state.session.authenticated)
       notice(
-        state.session.configured
-          ? 'Sign in with your access key.'
-          : 'No owner key yet. Run: npm run admin -- create-owner',
+        state.session.configured ? 'Sign in with your code.' : 'Set ADMIN_CODE in .env to sign in.',
       );
     render();
     if (state.session.authenticated) {
       await refreshStatus();
-      if (generation === state.generation && state.session.role === 'owner') await refreshOwner();
+      if (generation === state.generation && state.session.role === 'admin') await refreshAdmin();
     }
   } catch (error) {
     if (generation !== state.generation) return;
@@ -443,65 +435,73 @@ async function refreshSession() {
   }
   if (generation === state.generation) scheduleRefresh();
 }
-async function refreshOwner() {
+async function refreshAdmin() {
   const generation = state.generation;
   try {
-    const owner = await api('/api/owner/status');
+    const admin = await api('/api/admin/access');
     if (generation !== state.generation) return;
-    state.owner = owner;
-    text(
-      'owner-description',
-      state.owner.googleConnected
-        ? 'Connected.'
-        : state.owner.googleConfigured
-          ? 'Not connected.'
-          : 'Not configured. See docs/google-setup.md.',
-    );
-    text(
-      'google-connect',
-      state.owner.googleConnected ? 'Reconnect Google Nest' : 'Connect Google Nest',
-    );
-    $('access-list').replaceChildren();
-    for (const entry of state.owner.accessKeys || []) {
-      const row = document.createElement('div');
-      row.className = 'access-row';
-      const name = document.createElement('span');
-      name.textContent = entry.label || 'Key';
-      const detail = document.createElement('span');
-      detail.className = 'muted small';
-      detail.textContent =
-        entry.role === 'owner'
-          ? 'Owner'
-          : entry.expiresAt
-            ? `until ${new Date(entry.expiresAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}`
-            : 'Guest';
-      row.append(name, detail);
-      if (entry.role !== 'owner') {
-        const revoke = document.createElement('button');
-        revoke.type = 'button';
-        revoke.textContent = 'Revoke';
-        revoke.addEventListener('click', () => revokeKey(entry));
-        row.append(revoke);
-      }
-      $('access-list').append(row);
-    }
+    state.admin = admin;
     render();
   } catch (error) {
-    if (generation === state.generation) text('owner-description', errorMessage(error));
+    if (generation === state.generation) notice(errorMessage(error), 'error');
   }
 }
-async function revokeKey(entry) {
-  if (state.busy || !window.confirm(`Revoke access for ${entry.label}?`)) return;
+function fillAdmin() {
+  const access = state.admin?.access;
+  if (!access) return;
+  $('user-enabled').checked = access.enabled;
+  for (const box of document.querySelectorAll('[data-mode-choice]'))
+    box.checked = access.modes.includes(box.dataset.modeChoice);
+  $('user-eco').checked = access.eco;
+  for (const [id, field] of [
+    ['user-min', 'minCelsius'],
+    ['user-max', 'maxCelsius'],
+  ]) {
+    const input = $(id);
+    input.step = unit === 'F' ? '1' : '0.5';
+    if (document.activeElement !== input) input.value = String(round(toDisplay(access[field])));
+  }
+  document.querySelectorAll('.admin-unit').forEach((node) => {
+    node.textContent = `°${unit}`;
+  });
+  text(
+    'admin-status',
+    state.demo
+      ? 'Demo: changes here preview what the user sees.'
+      : `User code ${state.admin.userCodeSet ? 'set' : 'not set (USER_CODE)'} · Google Nest ${state.admin.googleConnected ? 'connected' : 'not connected (npm run google-auth)'}`,
+  );
+}
+async function saveAdmin() {
+  if (!state.admin) return;
+  const access = {
+    enabled: $('user-enabled').checked,
+    modes: ALL_MODES.filter((m) => document.querySelector(`[data-mode-choice="${m}"]`).checked),
+    eco: $('user-eco').checked,
+    minCelsius: round(toCelsius(Number($('user-min').value)), 1),
+    maxCelsius: round(toCelsius(Number($('user-max').value)), 1),
+  };
+  if (state.demo) {
+    state.admin.access = access;
+    state.controls = { modes: access.modes, eco: access.eco };
+    state.limits = {
+      ...state.limits,
+      minCelsius: access.minCelsius,
+      maxCelsius: access.maxCelsius,
+    };
+    render();
+    return;
+  }
+  if (state.session.role !== 'admin') return;
   try {
-    await api(`/api/owner/keys/${encodeURIComponent(entry.id)}`, {
-      method: 'DELETE',
-      body: '{}',
+    state.admin.access = await api('/api/admin/access', {
+      method: 'PUT',
+      body: JSON.stringify(access),
     });
-    notice(`Revoked ${entry.label}.`, 'success');
+    notice('Saved.', 'success');
   } catch (error) {
     notice(errorMessage(error), 'error');
   }
-  await refreshOwner();
+  render();
 }
 function saveSettings() {
   try {
@@ -665,6 +665,16 @@ function enterDemo() {
   state.connected = true;
   state.stale = false;
   state.limits = { ...fallbackLimits };
+  state.controls = { modes: [...ALL_MODES], eco: true };
+  state.admin = {
+    access: {
+      enabled: true,
+      modes: [...ALL_MODES],
+      eco: true,
+      minCelsius: fallbackLimits.minCelsius,
+      maxCelsius: fallbackLimits.maxCelsius,
+    },
+  };
   state.snapshot = {
     connection: 'ONLINE',
     mode: 'HEAT',
@@ -696,43 +706,14 @@ async function exitDemo() {
   state.snapshot = null;
   state.stale = false;
   state.controls = { modes: [...ALL_MODES], eco: true };
+  state.admin = null;
   resetDraft();
   render();
   notice('');
   await refreshSession();
 }
 $('unit-c').addEventListener('click', () => setUnit('C'));
-function fillGuestControls() {
-  for (const box of document.querySelectorAll('[data-mode-choice]'))
-    box.checked = state.controls.modes.includes(box.dataset.modeChoice);
-  $('show-eco').checked = state.controls.eco;
-}
-async function saveGuestControls() {
-  const controls = {
-    modes: ALL_MODES.filter((m) => document.querySelector(`[data-mode-choice="${m}"]`).checked),
-    eco: $('show-eco').checked,
-  };
-  if (state.demo) {
-    state.controls = controls;
-    render();
-    return;
-  }
-  if (state.session.role !== 'owner') return;
-  try {
-    state.controls = await api('/api/owner/controls', {
-      method: 'PUT',
-      body: JSON.stringify(controls),
-    });
-  } catch (error) {
-    notice(errorMessage(error), 'error');
-    fillGuestControls();
-  }
-  render();
-}
-$('settings-open').addEventListener('click', () => {
-  fillGuestControls();
-  $('settings-dialog').showModal();
-});
+$('settings-open').addEventListener('click', () => $('settings-dialog').showModal());
 $('settings-close').addEventListener('click', () => $('settings-dialog').close());
 $('settings-dialog').addEventListener('click', (event) => {
   if (event.target === $('settings-dialog')) $('settings-dialog').close();
@@ -743,8 +724,10 @@ for (const button of document.querySelectorAll('[data-theme-choice]'))
     saveSettings();
     applyTheme();
   });
-for (const box of document.querySelectorAll('[data-mode-choice], #show-eco'))
-  box.addEventListener('change', saveGuestControls);
+for (const input of document.querySelectorAll(
+  '#admin-card input[type="checkbox"], #user-min, #user-max',
+))
+  input.addEventListener('change', saveAdmin);
 $('unit-f').addEventListener('click', () => setUnit('F'));
 $('temperature-down').addEventListener('click', () => adjustTemperature(-1));
 $('temperature-up').addEventListener('click', () => adjustTemperature(1));
@@ -802,7 +785,7 @@ $('login-form').addEventListener('submit', async (event) => {
   $('login-submit').disabled = true;
   $('login-error').hidden = true;
   try {
-    await api('/api/login', { method: 'POST', body: JSON.stringify({ key }) });
+    await api('/api/login', { method: 'POST', body: JSON.stringify({ code: key }) });
     if (generation !== state.generation) return;
     $('login-dialog').close();
     state.demo = false;
@@ -830,8 +813,7 @@ $('logout').addEventListener('click', async () => {
     state.session = { authenticated: false, configured: state.session.configured };
     state.connected = false;
     state.snapshot = null;
-    state.owner = null;
-    clearCreatedKey();
+    state.admin = null;
     resetDraft();
     clearTimeout(state.pollTimer);
     render();
@@ -846,63 +828,6 @@ $('logout').addEventListener('click', async () => {
     }
   }
 });
-$('google-connect').addEventListener('click', async () => {
-  if (state.demo || state.session.role !== 'owner' || state.busy) return;
-  const generation = state.generation;
-  state.busy = true;
-  render();
-  $('google-connect').disabled = true;
-  try {
-    const result = await api('/api/owner/google/connect', { method: 'POST', body: '{}' });
-    if (generation !== state.generation) return;
-    const url = new URL(result.url);
-    // Only Google's official authorization host may receive a top-level connection redirect.
-    if (
-      url.protocol !== 'https:' ||
-      !['nestservices.google.com', 'accounts.google.com'].includes(url.hostname)
-    )
-      throw new Error('The connection URL could not be verified.');
-    window.location.assign(url.href);
-  } catch (error) {
-    if (generation === state.generation) notice(errorMessage(error), 'error');
-  } finally {
-    if (generation === state.generation) {
-      state.busy = false;
-      render();
-    }
-  }
-});
-$('key-form').addEventListener('submit', async (event) => {
-  event.preventDefault();
-  const label = $('key-label').value.trim();
-  if (!label || state.busy || state.session.role !== 'owner') return;
-  $('key-create').disabled = true;
-  try {
-    const created = await api('/api/owner/keys', {
-      method: 'POST',
-      body: JSON.stringify({ label, days: Number($('key-days').value) }),
-    });
-    $('key-label').value = '';
-    $('key-token').value = created.token;
-    $('key-created').hidden = false;
-    $('key-token').select();
-    await refreshOwner();
-  } catch (error) {
-    notice(errorMessage(error), 'error');
-  } finally {
-    $('key-create').disabled = false;
-  }
-});
-$('key-copy').addEventListener('click', async () => {
-  $('key-token').select();
-  try {
-    await navigator.clipboard.writeText($('key-token').value);
-  } catch {
-    document.execCommand?.('copy');
-  }
-  text('key-copy', 'Copied');
-  setTimeout(() => text('key-copy', 'Copy'), 1500);
-});
 document.addEventListener('visibilitychange', () => {
   clearTimeout(state.pollTimer);
   if (!document.hidden && state.session.authenticated && !state.demo)
@@ -911,7 +836,6 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('pagehide', () => {
   clearTimeout(state.pollTimer);
   $('access-key').value = '';
-  clearCreatedKey();
 });
 applyTheme();
 render();
