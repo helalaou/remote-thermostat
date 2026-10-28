@@ -1,32 +1,26 @@
 # Remote Thermostat
 
-Control your Nest thermostat from a web page, and give other people their own key to it. They can't reach your Google account or your other devices.
+Control your Nest thermostat from a web page, and let one other person control it with a simple code. They never get your Google account or your other devices.
 
-- Mode, target temperature, heat/cool range, Eco
-- Owner adds and revokes guest keys, and picks which modes guests can use
-- Light/dark theme, °C/°F, works on phones
-- Node.js 24, Hono, SQLite. No build step.
+- **Admin code** (yours): full control, plus an admin panel to choose what the user can do
+- **User code** (theirs): only the modes, Eco and temperature range you allow; you can switch it off anytime
+- Mode, target temperature, heat/cool range, Eco · light/dark · °C/°F · works on phones
+- Free hosting on Netlify, no database. Settings live in environment variables.
 
-## Run
+## Run locally
 
 ```sh
 npm ci
-cp .env.example .env
+cp .env.example .env    # set ADMIN_CODE and USER_CODE
 npm start
 ```
 
-Open <http://localhost:3000> and click **Try demo**.
+Open <http://localhost:3000>. **Try demo** works without signing in.
 
-Create the owner key (it's shown only once):
-
-```sh
-npm run admin -- create-owner
-```
-
-## Connect and host
+## Set it up for real
 
 1. [Connect your thermostat](docs/google-setup.md). Needs Google's one-time US$5 Device Access fee.
-2. [Host it online](docs/self-hosting.md). Railway, about $5/month.
+2. [Put it on Netlify](docs/hosting.md) (free).
 
 ## Limits
 
