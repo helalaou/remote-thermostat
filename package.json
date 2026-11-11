@@ -18,7 +18,7 @@
     "google-auth": "node --env-file=.env scripts/google-auth.ts"
   },
   "dependencies": {
-    "@hono/node-server": "^1.19.5",
+    "@hono/node-server": "^2.1.6",
     "@netlify/blobs": "^11.1.7",
     "hono": "^4.10.0"
   },
